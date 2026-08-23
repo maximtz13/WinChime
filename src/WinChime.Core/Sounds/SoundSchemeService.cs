@@ -22,13 +22,33 @@ namespace WinChime.Core.Sounds;
 /// </summary>
 public sealed class SoundSchemeService
 {
-    private const string SchemesPath = @"AppEvents\Schemes";
-    private const string AppsPath = @"AppEvents\Schemes\Apps";
-    private const string NamesPath = @"AppEvents\Schemes\Names";
-    private const string LabelsPath = @"AppEvents\EventLabels";
+    /// <summary>Where Windows keeps this, relative to HKCU.</summary>
+    public const string DefaultRegistryRoot = "AppEvents";
 
     public const string WindowsDefaultScheme = ".Default";
     public const string NoSoundsScheme = ".None";
+
+    private readonly string _root;
+
+    private string SchemesPath => $@"{_root}\Schemes";
+    private string AppsPath => $@"{_root}\Schemes\Apps";
+    private string NamesPath => $@"{_root}\Schemes\Names";
+    private string LabelsPath => $@"{_root}\EventLabels";
+
+    public SoundSchemeService() : this(DefaultRegistryRoot) { }
+
+    /// <summary>
+    /// Points the service at an alternative HKCU subtree. This exists so the test suite can
+    /// exercise the real registry code against a scratch key rather than mocking it away
+    /// or, worse, rewriting the sound settings of whoever runs the tests.
+    /// </summary>
+    public SoundSchemeService(string registryRoot)
+    {
+        if (string.IsNullOrWhiteSpace(registryRoot))
+            throw new ArgumentException("Registry root must not be empty.", nameof(registryRoot));
+
+        _root = registryRoot.Trim('\\');
+    }
 
     // ---------------------------------------------------------------- reading --
 
@@ -79,7 +99,7 @@ public sealed class SoundSchemeService
             .ToList();
     }
 
-    private static Dictionary<string, string> LoadEventLabels()
+    private Dictionary<string, string> LoadEventLabels()
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         using var labels = Registry.CurrentUser.OpenSubKey(LabelsPath);
@@ -240,12 +260,20 @@ public sealed class SoundSchemeService
 
     public OperationResult SaveCurrentAsScheme(string schemeName)
     {
+        // Check the raw input against the reserved keys BEFORE sanitising. Sanitisation
+        // strips the leading dot, so ".Default" would become "Default" and slip past a
+        // check made afterwards: the user would silently get a scheme named "Default"
+        // instead of being told the name is reserved.
+        var trimmed = schemeName.Trim();
+        if (trimmed.Equals(WindowsDefaultScheme, StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals(NoSoundsScheme, StringComparison.OrdinalIgnoreCase))
+        {
+            return OperationResult.Fail($"{trimmed} is reserved by Windows and cannot be overwritten.");
+        }
+
         var schemeKey = SanitiseSchemeKey(schemeName);
         if (string.IsNullOrWhiteSpace(schemeKey))
             return OperationResult.Fail("Scheme name is empty or contains only unusable characters.");
-
-        if (schemeKey is WindowsDefaultScheme or NoSoundsScheme)
-            return OperationResult.Fail($"{schemeKey} is reserved by Windows and cannot be overwritten.");
 
         try
         {

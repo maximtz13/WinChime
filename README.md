@@ -196,6 +196,26 @@ dotnet build WinChime.sln -c Release
 dotnet run --project src/WinChime.App
 ```
 
+```bash
+dotnet test WinChime.sln -c Release
+```
+
+### Tests
+
+`tests/WinChime.Core.Tests` covers the registry layer, WAV validation, and scheme
+import/export. Two decisions worth knowing:
+
+**No registry mocking.** `SoundSchemeService` takes an HKCU root, and tests point it at a
+throwaway `Software\WinChime.Tests\{guid}` subtree. Registry semantics are exactly where
+the bugs live here — REG_SZ versus REG_EXPAND_SZ, default values on subkeys,
+delete-subkey-tree behaviour — and a mock would only assert our assumptions about those
+rather than the truth. The subtree is removed on dispose; a test run leaves nothing behind
+and never touches your real sound settings.
+
+**No binary fixtures.** WAV files are synthesised per test, so a case can state the
+property it cares about (2.5 seconds long, MP3-in-a-WAV-container) instead of a reader
+having to open a blob to find out what makes it interesting.
+
 To produce a single self-contained exe:
 
 ```bash
