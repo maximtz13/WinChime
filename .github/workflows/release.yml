@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the leading v (e.g. 0.1.0)'
+        required: true
+
+permissions:
+  contents: write   # needed to create the release and upload assets
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $env:GITHUB_REF -replace '^refs/tags/v', ''
+          } else {
+            '${{ github.event.inputs.version }}'
+          }
+          if (-not $version) { throw 'Could not determine a version to build.' }
+          Write-Host "Building version $version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        run: dotnet build WinChime.sln -c Release -warnaserror -p:Version=${{ steps.version.outputs.version }}
+
+      # Two flavours, because the trade-off genuinely matters to users:
+      #   framework-dependent -> ~0.3 MB, needs the .NET 8 Desktop Runtime installed
+      #   self-contained      -> ~155 MB, single file, no prerequisites at all
+      - name: Publish framework-dependent
+        run: >
+          dotnet publish src/WinChime.App
+          -c Release -r win-x64 --self-contained false
+          -p:PublishSingleFile=true -p:DebugType=none
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish/framework-dependent
+
+      - name: Publish self-contained
+        run: >
+          dotnet publish src/WinChime.App
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=none
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish/self-contained
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item LICENSE, README.md publish/framework-dependent/
+          Copy-Item LICENSE, README.md publish/self-contained/
+          Compress-Archive publish/framework-dependent/* "dist/WinChime-$v-win-x64.zip"
+          Compress-Archive publish/self-contained/*      "dist/WinChime-$v-win-x64-self-contained.zip"
+          Get-ChildItem dist | ForEach-Object {
+            "{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)
+          }
+
+      # Notes live in .github/release-notes-template.md rather than inline. A PowerShell
+      # here-string cannot work inside a YAML block scalar: its content has to start at
+      # column 0, which terminates the block early and makes the workflow fail to parse.
+      # Keeping the prose in its own file also means editing release notes does not mean
+      # editing CI.
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          $tag = '${{ steps.version.outputs.tag }}'
+          $notes = (Get-Content .github/release-notes-template.md -Raw) -replace '\{\{VERSION\}\}', $v
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+          # Plain $assets, not @assets: PowerShell expands an array into separate
+          # arguments for a native command, whereas @ is splatting syntax meant for cmdlets.
+          $assets = (Get-ChildItem dist).FullName
+          gh release create $tag $assets --title "WinChime $v" --notes-file release-notes.md

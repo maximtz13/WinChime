@@ -10,6 +10,8 @@
     <RootNamespace>WinChime.App</RootNamespace>
     <AssemblyName>WinChime</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyTitle>WinChime</AssemblyTitle>
+    <Description>Windows sound and startup personalisation: event sounds, sound schemes, the logon chime, wallpaper and the lock screen.</Description>
     <!-- WinExe (not Exe) matters: the play-chime logon task must not flash a console. -->
   </PropertyGroup>
 

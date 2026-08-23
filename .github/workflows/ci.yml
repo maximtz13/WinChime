@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build:
+    # Must be Windows: the projects target net8.0-windows and use WPF plus Win32 P/Invoke.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore WinChime.sln
+
+      # -warnaserror is deliberate. The tree builds at zero warnings today, and this keeps
+      # it that way. If a future SDK introduces new analysers and turns CI red on code that
+      # is otherwise fine, drop this flag rather than suppressing warnings one by one.
+      - name: Build
+        run: dotnet build WinChime.sln -c Release --no-restore -warnaserror
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $testProjects = Get-ChildItem -Recurse -Filter *.Tests.csproj
+          if ($testProjects) {
+            Write-Host "Found $($testProjects.Count) test project(s)."
+            dotnet test WinChime.sln -c Release --no-build --verbosity normal
+          } else {
+            Write-Host "::warning::No test projects found - test step skipped."
+          }
+
+      # Packaging breaks independently of compilation (single-file, trimming, WPF
+      # resources), so prove the publish works on every PR rather than at tag time.
+      - name: Verify publish
+        run: >
+          dotnet publish src/WinChime.App
+          -c Release -r win-x64 --self-contained false
+          -p:PublishSingleFile=true -p:DebugType=none
+          -o publish-check
+
+      - name: Upload build for inspection
+        uses: actions/upload-artifact@v7
+        with:
+          name: WinChime-${{ github.sha }}
+          path: publish-check/WinChime.exe
+          if-no-files-found: error
+          retention-days: 14
