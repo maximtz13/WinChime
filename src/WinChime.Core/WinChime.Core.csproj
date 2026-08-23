@@ -6,8 +6,27 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>WinChime.Core</RootNamespace>
-    <!-- Zero NuGet dependencies: Registry, System.Text.Json and P/Invoke are all in-box
-         for a net8.0-windows target. Keeps offline builds and code-signing simple. -->
+    <!-- Registry, System.Text.Json and the P/Invokes all resolve from the shared
+         framework for a net8.0-windows target, so this assembly needs no package
+         reference for any of them. -->
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The one dependency, and a deliberate trade.
+
+      Windows sound events require uncompressed PCM WAV. Without a decoder the app can
+      only detect that an MP3 will not work and tell the user to go and re-encode it
+      themselves, which is a poor answer for the single most common thing people want to
+      assign. NAudio wraps Media Foundation and turns that into a one-step conversion.
+
+      The alternative was P/Invoking Media Foundation directly to preserve a
+      zero-dependency build. That is several hundred lines of COM interop for the same
+      result, and interop that is far easier to get subtly wrong than to review.
+
+      Pinned to 2.x: NAudio 3.x requires .NET 9 and this project targets .NET 8.
+    -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
 
 </Project>

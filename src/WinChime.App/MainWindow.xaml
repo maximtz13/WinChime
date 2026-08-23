@@ -99,7 +99,7 @@
                             </WrapPanel>
 
                             <TextBlock Style="{StaticResource Hint}" Margin="0,14,0,0"
-                                       Text="Windows reads these values each time an event fires, so changes apply immediately — no reboot needed. Sounds must be uncompressed PCM .wav; anything else is accepted by Windows but plays silently." />
+                                       Text="Windows reads these values each time an event fires, so changes apply immediately — no reboot needed. Event sounds must be uncompressed PCM .wav; Windows accepts anything else and then plays silently with no error. Pick an MP3, M4A, WMA or FLAC and WinChime offers to convert it for you." />
                         </StackPanel>
                     </Grid>
                 </Grid>
