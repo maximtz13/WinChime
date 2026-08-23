@@ -133,8 +133,9 @@ A delay slider matters more than it looks: at logon the shell is still starting 
 endpoints may not be ready, so a zero-delay sound is frequently inaudible. Default is 4s.
 
 Registered through `schtasks.exe` with an XML definition rather than the Task Scheduler COM
-API, to keep the Core assembly dependency-free. Note `schtasks` requires the XML file to be
-**UTF-16**; UTF-8 is rejected with an unhelpful parse error.
+API — a one-off registration does not justify another dependency, and the XML is
+inspectable by anyone wondering what runs at their logon. Note `schtasks` requires the XML
+file to be **UTF-16**; UTF-8 is rejected with an unhelpful parse error.
 
 ### Lock screen — `LockScreenService`
 
