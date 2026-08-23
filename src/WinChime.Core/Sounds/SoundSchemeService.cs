@@ -201,6 +201,12 @@ public sealed class SoundSchemeService
     /// </summary>
     public OperationResult ApplyScheme(string schemeKey)
     {
+        // Snapshot before touching anything. Applying a scheme writes to dozens of keys, and
+        // failing part-way through would otherwise leave a mixture of two schemes with no
+        // way back to either. Cheap to take: a few dozen short strings.
+        var snapshot = CaptureAssignments();
+        var previousScheme = GetActiveSchemeKey();
+
         try
         {
             var applied = 0;
@@ -254,7 +260,16 @@ public sealed class SoundSchemeService
         }
         catch (Exception ex)
         {
-            return OperationResult.Fail($"Failed to apply scheme: {ex.Message}");
+            var rollback = RestoreAssignments(snapshot);
+            SetActiveSchemeKey(previousScheme);
+
+            // Say plainly whether the rollback worked. "Failed, and the recovery also
+            // failed" is a materially different situation for the user than "failed,
+            // nothing changed", and conflating the two would be dishonest.
+            return OperationResult.Fail(rollback.Success
+                ? $"Could not apply the scheme ({ex.Message}). Your previous sounds were put back."
+                : $"Could not apply the scheme ({ex.Message}), and restoring your previous sounds " +
+                  $"also failed ({rollback.Message}). Use System and Safety to restore a backup.");
         }
     }
 

@@ -1,3 +1,4 @@
+using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 
 namespace WinChime.Core.Interop;
@@ -98,4 +99,25 @@ internal static class NativeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern uint SizeofResource(IntPtr hModule, IntPtr hResInfo);
+
+    // ---- advapi32: registry change notification --------------------------------
+    // Used to notice when something else changes the sound settings while the app is open,
+    // so the list does not silently drift out of date.
+    public const int REG_NOTIFY_CHANGE_NAME = 0x00000001;
+    public const int REG_NOTIFY_CHANGE_ATTRIBUTES = 0x00000002;
+    public const int REG_NOTIFY_CHANGE_LAST_SET = 0x00000004;
+
+    /// <summary>
+    /// Without this flag the notification is bound to the calling thread and is cancelled
+    /// when that thread exits. Requires Windows 8 or later.
+    /// </summary>
+    public const int REG_NOTIFY_THREAD_AGNOSTIC = 0x10000000;
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    public static extern int RegNotifyChangeKeyValue(
+        SafeRegistryHandle hKey,
+        [MarshalAs(UnmanagedType.Bool)] bool bWatchSubtree,
+        int dwNotifyFilter,
+        SafeWaitHandle hEvent,
+        [MarshalAs(UnmanagedType.Bool)] bool fAsynchronous);
 }

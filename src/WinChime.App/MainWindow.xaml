@@ -37,6 +37,11 @@
                         <Separator Margin="8,0" />
                         <Button Content="Export…" Click="ExportScheme_Click" />
                         <Button Content="Import…" Click="ImportScheme_Click" />
+                        <Separator Margin="8,0" />
+                        <Button x:Name="UndoButton" Content="Undo" Click="Undo_Click"
+                                IsEnabled="False" MinWidth="72" />
+                        <Button x:Name="RedoButton" Content="Redo" Click="Redo_Click"
+                                IsEnabled="False" MinWidth="72" />
                     </StackPanel>
 
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
