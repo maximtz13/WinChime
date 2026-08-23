@@ -6,7 +6,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Threading;
 using WinChime.Core.Elevation;
+using WinChime.Core.Interop;
 using WinChime.Core.Model;
 using WinChime.Core.Personalization;
 using WinChime.Core.Safety;
@@ -30,8 +32,23 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<SoundEvent> _events = new();
     private readonly ObservableCollection<BackupManifest> _backupItems = new();
 
+    private readonly SoundEditHistory _history = new();
+
     private ICollectionView? _eventView;
     private SystemInfo _systemInfo = new();
+
+    /// <summary>
+    /// Watches HKCU\AppEvents so the list does not silently drift when the Sound control
+    /// panel, another tool, or a second copy of this app changes something.
+    /// </summary>
+    private RegistryWatcher? _watcher;
+    private DispatcherTimer? _refreshTimer;
+
+    /// <summary>
+    /// When we last wrote to the registry ourselves, so a refresh triggered by our own edit
+    /// is not announced to the user as an external change.
+    /// </summary>
+    private DateTime _lastSelfWriteUtc = DateTime.MinValue;
 
     /// <summary>The built-in chime, extracted from imageres.dll on first use. Read-only.</summary>
     private ExtractedChime? _systemChime;
@@ -69,8 +86,142 @@ public partial class MainWindow : Window
         RefreshDesktopTab();
         RefreshSystemTab();
         RefreshBackups();
+        StartRegistryWatcher();
 
         SetStatus($"Loaded {_events.Count} sound events.");
+    }
+
+    // ============================================================ live refresh ==
+
+    private void StartRegistryWatcher()
+    {
+        // A single user action produces several registry writes, so coalesce them rather
+        // than rebuilding the list once per key.
+        _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _refreshTimer.Tick += RefreshTimer_Tick;
+
+        try
+        {
+            _watcher = new RegistryWatcher(Microsoft.Win32.RegistryHive.CurrentUser, "AppEvents");
+
+            // Raised on the watcher thread; hop to the UI thread before touching anything.
+            _watcher.Changed += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _refreshTimer.Stop();
+                _refreshTimer.Start();
+            }));
+
+            _watcher.Start();
+
+            // Start only creates the thread. If it never actually arms, the list is not
+            // live and the user should be told rather than left trusting a stale view.
+            var watcher = _watcher;
+            Task.Run(() =>
+            {
+                if (watcher.WaitUntilArmed(TimeSpan.FromSeconds(5))) return;
+
+                Dispatcher.BeginInvoke(new Action(() => SetStatus(
+                    $"Live refresh is not active ({watcher.FailureReason ?? "the watcher did not start"}). " +
+                    "Use Refresh on the System tab after changing sounds elsewhere.")));
+            });
+        }
+        catch (Exception ex)
+        {
+            // Live refresh is a convenience. Losing it must not cost the user the app.
+            _watcher = null;
+            SetStatus($"Live refresh unavailable ({ex.Message}). Use Refresh on the System tab.");
+        }
+
+        Closed += (_, _) =>
+        {
+            _refreshTimer?.Stop();
+            _watcher?.Dispose();
+        };
+    }
+
+    private void RefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        _refreshTimer?.Stop();
+
+        var external = DateTime.UtcNow - _lastSelfWriteUtc > TimeSpan.FromSeconds(2);
+
+        ReloadEvents();
+        ReloadSchemes();
+
+        if (external)
+            SetStatus("Sound settings changed outside WinChime. The list has been refreshed.");
+    }
+
+    /// <summary>Call immediately before or after writing to the registry ourselves.</summary>
+    private void MarkSelfWrite() => _lastSelfWriteUtc = DateTime.UtcNow;
+
+    // =================================================================== undo ==
+
+    private void UpdateUndoButtons()
+    {
+        UndoButton.IsEnabled = _history.CanUndo;
+        RedoButton.IsEnabled = _history.CanRedo;
+
+        UndoButton.ToolTip = _history.NextUndoDescription is { } undo ? $"Undo: {undo}" : null;
+        RedoButton.ToolTip = _history.NextRedoDescription is { } redo ? $"Redo: {redo}" : null;
+    }
+
+    private void Undo_Click(object sender, RoutedEventArgs e)
+    {
+        var edit = _history.Undo();
+        if (edit is null) return;
+
+        MarkSelfWrite();
+        var result = _sounds.RestoreAssignments(edit.Before);
+
+        SetStatus(result.Success ? $"Undone: {edit.Description}" : result.Message);
+        if (!result.Success) Report(result);
+
+        ReloadEvents();
+        UpdateUndoButtons();
+    }
+
+    private void Redo_Click(object sender, RoutedEventArgs e)
+    {
+        var edit = _history.Redo();
+        if (edit is null) return;
+
+        MarkSelfWrite();
+        var result = _sounds.RestoreAssignments(edit.After);
+
+        SetStatus(result.Success ? $"Redone: {edit.Description}" : result.Message);
+        if (!result.Success) Report(result);
+
+        ReloadEvents();
+        UpdateUndoButtons();
+    }
+
+    /// <summary>Assigns a sound to one event and records it as a single undoable step.</summary>
+    private void ApplyAndRecord(SoundEvent soundEvent, string? newValue, string description)
+    {
+        var before = soundEvent.CurrentPathRaw;
+
+        MarkSelfWrite();
+        var result = _sounds.SetSound(soundEvent.AppKey, soundEvent.EventKey, newValue);
+
+        if (result.Success)
+            _history.RecordSingle(soundEvent.AppKey, soundEvent.EventKey, before, newValue, description);
+
+        Report(result);
+        ReloadEvents();
+        UpdateUndoButtons();
+    }
+
+    /// <summary>Records a bulk change by diffing snapshots taken either side of it.</summary>
+    private void RecordBulk(
+        string description,
+        IReadOnlyDictionary<string, string> before,
+        IReadOnlyDictionary<string, string> after)
+    {
+        var edit = SoundEditHistory.DiffSnapshots(description, before, after);
+        if (edit is not null) _history.Record(edit);
+
+        UpdateUndoButtons();
     }
 
     // =========================================================== shared helpers ==
@@ -297,8 +448,7 @@ public partial class MainWindow : Window
         var path = ResolveAssignableSound(picked);
         if (path is null) return;
 
-        Report(_sounds.SetSound(soundEvent.AppKey, soundEvent.EventKey, path));
-        ReloadEvents();
+        ApplyAndRecord(soundEvent, path, $"Set {soundEvent.EventDisplayName}");
     }
 
     private void PreviewSound_Click(object sender, RoutedEventArgs e)
@@ -332,16 +482,31 @@ public partial class MainWindow : Window
     {
         if (EventList.SelectedItem is not SoundEvent soundEvent) return;
 
-        Report(_sounds.SetSound(soundEvent.AppKey, soundEvent.EventKey, null));
-        ReloadEvents();
+        ApplyAndRecord(soundEvent, null, $"Silence {soundEvent.EventDisplayName}");
     }
 
     private void RestoreSound_Click(object sender, RoutedEventArgs e)
     {
         if (EventList.SelectedItem is not SoundEvent soundEvent) return;
 
-        Report(_sounds.RestoreDefault(soundEvent.AppKey, soundEvent.EventKey));
+        // Goes through RestoreDefault rather than ApplyAndRecord so the "no recorded
+        // default" case keeps its own specific error, but records the same undo step.
+        var before = soundEvent.CurrentPathRaw;
+
+        MarkSelfWrite();
+        var result = _sounds.RestoreDefault(soundEvent.AppKey, soundEvent.EventKey);
+
+        if (result.Success)
+        {
+            _history.RecordSingle(
+                soundEvent.AppKey, soundEvent.EventKey,
+                before, soundEvent.DefaultPathRaw,
+                $"Restore default for {soundEvent.EventDisplayName}");
+        }
+
+        Report(result);
         ReloadEvents();
+        UpdateUndoButtons();
     }
 
     /// <summary>
@@ -379,8 +544,7 @@ public partial class MainWindow : Window
         var path = RunConversion(current, options);
         if (path is null) return;
 
-        Report(_sounds.SetSound(soundEvent.AppKey, soundEvent.EventKey, path));
-        ReloadEvents();
+        ApplyAndRecord(soundEvent, path, $"Adjust {soundEvent.EventDisplayName}");
     }
 
     private void ApplyScheme_Click(object sender, RoutedEventArgs e)
@@ -401,7 +565,15 @@ public partial class MainWindow : Window
             if (proceed != MessageBoxResult.Yes) return;
         }
 
-        Report(_sounds.ApplyScheme(scheme.Key));
+        var before = _sounds.CaptureAssignments();
+
+        MarkSelfWrite();
+        var result = _sounds.ApplyScheme(scheme.Key);
+        Report(result);
+
+        if (result.Success)
+            RecordBulk($"Apply scheme {scheme.DisplayName}", before, _sounds.CaptureAssignments());
+
         ReloadEvents();
         RefreshBackups();
     }
@@ -504,8 +676,14 @@ public partial class MainWindow : Window
         var (backupResult, _) = _backups.CreateSoundBackup($"Before importing: {export.Name}");
         if (!backupResult.Success) SetStatus($"Warning: backup failed ({backupResult.Message}).");
 
-        var (result2, missing) = _sounds.ApplyExport(export);
-        Report(result2);
+        var before = _sounds.CaptureAssignments();
+
+        MarkSelfWrite();
+        var (applyResult, missing) = _sounds.ApplyExport(export);
+        Report(applyResult);
+
+        if (applyResult.Success)
+            RecordBulk($"Import {export.Name}", before, _sounds.CaptureAssignments());
 
         ShowWarnings("Some entries were skipped", warnings.Concat(missing).ToList());
 
@@ -816,7 +994,17 @@ public partial class MainWindow : Window
 
         if (confirm != MessageBoxResult.Yes) return;
 
-        Report(_backups.RestoreSounds(manifest));
+        var before = _sounds.CaptureAssignments();
+
+        MarkSelfWrite();
+        var result = _backups.RestoreSounds(manifest);
+        Report(result);
+
+        // Restoring a backup is itself undoable, so a mis-clicked restore is recoverable
+        // without hunting for the backup taken just before it.
+        if (result.Success)
+            RecordBulk($"Restore backup from {manifest.CreatedLocalText}", before, _sounds.CaptureAssignments());
+
         ReloadEvents();
         ReloadSchemes();
     }

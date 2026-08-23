@@ -118,20 +118,10 @@ public sealed class ScratchRegistry : IDisposable
             // A leaked scratch key is annoying, not a test failure.
         }
 
-        // Remove the shared parent once the last concurrent test has finished with it.
-        try
-        {
-            using var parent = Registry.CurrentUser.OpenSubKey(ParentPath);
-            if (parent is not null && parent.SubKeyCount == 0 && parent.ValueCount == 0)
-            {
-                parent.Dispose();
-                Registry.CurrentUser.DeleteSubKey(ParentPath, throwOnMissingSubKey: false);
-            }
-        }
-        catch
-        {
-            // Racing with another test disposing at the same moment is fine.
-        }
+        // The shared parent key is deliberately left in place. Deleting it the moment it
+        // looks empty races with another test class creating its own subkey underneath,
+        // which is exactly the bug that made TestWav flaky. An empty key under
+        // HKCU\Software is a far smaller problem than an intermittent suite.
     }
 
     /// <summary>Mirrors what Windows stores: REG_EXPAND_SZ only when the path needs expansion.</summary>

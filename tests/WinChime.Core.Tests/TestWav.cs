@@ -98,21 +98,18 @@ public sealed class TestWav : IDisposable
         return path;
     }
 
+    /// <summary>
+    /// Deletes this instance's own folder only.
+    ///
+    /// It deliberately does NOT tidy up the shared WinChime.Tests parent. xUnit runs test
+    /// classes in parallel, and deleting the parent the moment it looks empty raced with
+    /// another class creating its subfolder inside it — Directory.CreateDirectory creates
+    /// missing parents, then creates the leaf, and the parent can vanish in between. That
+    /// produced intermittent DirectoryNotFoundException failures. An empty directory left
+    /// in TEMP is a much smaller problem than a flaky suite.
+    /// </summary>
     public void Dispose()
     {
         try { Directory.Delete(_folder, recursive: true); } catch { /* temp files */ }
-
-        // Remove the shared parent once the last concurrent test is done with it, so a
-        // test run leaves nothing behind at all. Mirrors ScratchRegistry.Dispose.
-        try
-        {
-            var parent = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WinChime.Tests");
-            if (Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any())
-                Directory.Delete(parent);
-        }
-        catch
-        {
-            // Racing with another test disposing at the same moment is fine.
-        }
     }
 }

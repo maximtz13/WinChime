@@ -178,6 +178,24 @@ elevation, no policy, fully reversible from Settings.
 
 ## Safety design
 
+**Undo and redo for anything you change.** `SoundEditHistory` stores diffs rather than
+snapshots, so a single assignment records one key while a scheme apply records only the
+events it actually changed — one mechanism for both. Restoring a backup is itself undoable,
+so a mis-clicked restore does not send you hunting through the backup list. Bounded at 100
+entries; in-session only.
+
+**Applying a scheme is atomic.** It writes to dozens of keys, so it snapshots first and
+rolls back if anything fails part-way. The error distinguishes "failed, your sounds were put
+back" from "failed, and the recovery also failed" — materially different situations, and
+conflating them would be dishonest.
+
+**The list does not silently go stale.** `RegistryWatcher` uses `RegNotifyChangeKeyValue` on
+`HKCU\AppEvents`, so changes made by the Sound control panel or another tool show up here.
+Notifications are one-shot and must be re-armed; getting that wrong yields a watcher that
+fires once then goes quiet, which is worse than none because it looks like it works. There
+is a test specifically for that failure mode. If the watcher cannot arm, the app says so
+rather than leaving you trusting a stale view.
+
 **Automatic backups before every bulk change.** `BackupService` snapshots all sound
 assignments to `%LOCALAPPDATA%\WinChime\backups\{id}\manifest.json` before applying or
 importing a scheme. Not conditional on a checkbox. This is the *primary* undo path and
@@ -297,8 +315,11 @@ import/export. Two decisions worth knowing:
 throwaway `Software\WinChime.Tests\{guid}` subtree. Registry semantics are exactly where
 the bugs live here — REG_SZ versus REG_EXPAND_SZ, default values on subkeys,
 delete-subkey-tree behaviour — and a mock would only assert our assumptions about those
-rather than the truth. The subtree is removed on dispose; a test run leaves nothing behind
-and never touches your real sound settings.
+rather than the truth. Each test's subtree is removed on dispose and your real sound
+settings are never touched. The shared `HKCU\Software\WinChime.Tests` parent key and the
+matching TEMP folder are deliberately left in place: deleting them the moment they look
+empty races with another test class creating its own subtree underneath, which caused
+intermittent failures. An empty key is a smaller problem than a flaky suite.
 
 **No binary fixtures.** WAV files are synthesised per test, so a case can state the
 property it cares about (2.5 seconds long, MP3-in-a-WAV-container) instead of a reader
