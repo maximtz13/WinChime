@@ -77,6 +77,11 @@ jobs:
             "{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)
           }
 
+      # Notes live in .github/release-notes-template.md rather than inline. A PowerShell
+      # here-string cannot work inside a YAML block scalar: its content has to start at
+      # column 0, which terminates the block early and makes the workflow fail to parse.
+      # Keeping the prose in its own file also means editing release notes does not mean
+      # editing CI.
       - name: Create release
         shell: pwsh
         env:
@@ -84,19 +89,9 @@ jobs:
         run: |
           $v = '${{ steps.version.outputs.version }}'
           $tag = '${{ steps.version.outputs.tag }}'
-          $notes = @"
-## WinChime $v
-
-Two downloads, pick one:
-
-| File | Size | Needs |
-|------|------|-------|
-| ``WinChime-$v-win-x64.zip`` | ~0.3 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) |
-| ``WinChime-$v-win-x64-self-contained.zip`` | ~155 MB | nothing, it is fully standalone |
-
-Windows SmartScreen will warn on first run because the binary is unsigned. Details are in the README.
-
-WinChime does not modify system files, boot files, or firmware settings. Every change it makes is a per-user setting or a single documented registry value, and every change is reversible from inside the app.
-"@
-          gh release create $tag (Get-ChildItem dist | ForEach-Object { $_.FullName }) `
-            --title "WinChime $v" --notes $notes
+          $notes = (Get-Content .github/release-notes-template.md -Raw) -replace '\{\{VERSION\}\}', $v
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+          # Plain $assets, not @assets: PowerShell expands an array into separate
+          # arguments for a native command, whereas @ is splatting syntax meant for cmdlets.
+          $assets = (Get-ChildItem dist).FullName
+          gh release create $tag $assets --title "WinChime $v" --notes-file release-notes.md
