@@ -267,15 +267,33 @@ Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy
 
 `VerifiedAndReputablePolicyState` of `1` means Enforce, `2` Evaluation, `0` Off.
 
-### Why code signing is not the fix here
+### Where code signing does and does not help
 
-The obvious response is "just sign it", and that turns out not to work. SAC checks
-reputation *first* and the certificate chain second: if reputation is unknown, it blocks
-**even a correctly signed binary**. New and low-distribution software gets blocked until
-enough people have run it safely, signature or not. A certificate would add cost without
-reliably solving this, so WinChime is not signed today. That decision gets revisited if real
-users report real friction, at which point signing plus accumulated download volume actually
-compounds.
+The obvious response is "just sign it". That does not fix *this*, but the reason is more
+interesting than a flat no.
+
+**Signing buys no instant trust.** SAC checks reputation first and the certificate chain
+second, so an unknown-reputation binary is blocked **even when correctly signed**.
+SmartScreen behaves the same way: per Microsoft, a valid OV or EV certificate still produces
+an "unrecognized app" warning until reputation accumulates. Note also that **EV certificates
+no longer bypass SmartScreen** — they did years ago, and Microsoft now says paying the EV
+premium solely to avoid warnings is no longer justified.
+
+**But signing is the only way reputation ever compounds.** This is the argument that
+actually matters, and it is easy to miss:
+
+> When a file is not signed, SmartScreen reputation must build for each new version of your
+> files, starting with zero reputation. Reputation cannot transfer from previous versions
+> unless both were signed using the same publisher identity.
+
+Unsigned, every release starts from nothing, forever — v0.2.0 inherits none of v0.1.0's
+history. Signed, reputation accrues to the *certificate* and carries across versions. So
+signing is not a fix for today's block; it is the difference between reputation that
+accumulates and reputation that resets on every release.
+
+WinChime is unsigned today because at zero users there is nothing to compound yet. The point
+to revisit is when releases are frequent enough that restarting from zero each time is the
+binding constraint.
 
 ### If you are building from source
 
@@ -408,16 +426,23 @@ precise reason (access denied, policy blocked, file missing) instead of a stack 
 
 ## Distribution notes
 
-- **Code signing: deliberately not done yet.** A certificate would silence SmartScreen, but
-  it does *not* reliably satisfy Smart App Control, which weighs reputation ahead of
-  signature and blocks unknown-reputation binaries regardless. Azure Trusted Signing (renamed
-  Azure Artifact Signing in 2026) is the cheapest credible route at $9.99/month and is open
-  to individual developers, but identity validation is restricted to US and Canadian
-  applicants. Revisit when there are enough users for reputation and signature to compound.
-- **Accelerating reputation is free.** Releases can be submitted to Microsoft's security
-  portal for analysis, which targets the actual blocker rather than a proxy for it.
-- **Microsoft Store.** Store policy rules out an app that writes the HKLM and
-  PersonalizationCSP values used here, so sideload/direct download only.
+- **Code signing: deliberately not done yet.** A certificate does *not* silence SmartScreen
+  and does *not* satisfy Smart App Control on its own — both weigh reputation ahead of
+  signature. What signing does buy is reputation that carries across releases instead of
+  resetting to zero on every version. Azure Artifact Signing (formerly Trusted Signing) is
+  the cheapest credible route at $9.99/month and is open to individual developers, though
+  identity validation is restricted to US and Canadian applicants. Revisit when release
+  cadence makes the per-version reputation reset the binding constraint.
+- **There is no reputation submission process for consumer apps.** Microsoft is explicit:
+  *"There is no need (or mechanism) to manually submit a file for SmartScreen reputation
+  review for consumer endpoints. Reputation builds organically through download volume."*
+  The Microsoft Security Intelligence portal exists for **enterprise administrators** wanting
+  to accelerate trust for internal or managed deployments, and for reporting false positives.
+  Neither applies here, and submitting a binary nothing has flagged would just be noise.
+- **Microsoft Store.** Publishing through the Store is the one route that avoids all of this,
+  because Store apps are re-signed by Microsoft and never warned about. Store policy rules out
+  an app that writes the HKLM and PersonalizationCSP values used here, so sideload or direct
+  download only.
 
 ## License
 
