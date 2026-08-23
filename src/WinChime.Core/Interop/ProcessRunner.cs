@@ -22,9 +22,12 @@ public sealed record ProcessOutcome(int ExitCode, string StdOut, string StdErr)
 }
 
 /// <summary>
-/// Runs console tools (schtasks, manage-bde) with no visible window and full output
-/// capture. Used instead of adding the System.Management or TaskScheduler packages, which
-/// keeps this assembly dependency-free.
+/// Runs console tools with no visible window and full output capture. Its only caller is
+/// LogonChimeService driving schtasks.exe.
+///
+/// Preferred over the TaskScheduler COM API because a one-off task registration does not
+/// justify a dependency, and because the XML handed to schtasks is inspectable by anyone
+/// wondering what runs at their logon.
 /// </summary>
 public static class ProcessRunner
 {
