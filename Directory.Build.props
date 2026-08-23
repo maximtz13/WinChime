@@ -1,0 +1,22 @@
+<Project>
+
+  <!--
+    Shared metadata for every project in the repo. Without this the built exe has blank
+    file properties and a 1.0.0.0 version, which looks unfinished in the Details tab and
+    gives users nothing to quote in a bug report.
+
+    The Release workflow overrides Version from the git tag (-p:Version=...), so bumping a
+    release means pushing a tag, not editing this file.
+  -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>WinChime</Product>
+    <Authors>Maximo Martinez Jr.</Authors>
+    <Company>Maximo Martinez Jr.</Company>
+    <Copyright>Copyright (c) 2026 Maximo Martinez Jr.</Copyright>
+    <RepositoryUrl>https://github.com/maximtz13/WinChime</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+</Project>

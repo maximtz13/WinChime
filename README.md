@@ -1,5 +1,8 @@
 # WinChime
 
+[![CI](https://github.com/maximtz13/WinChime/actions/workflows/ci.yml/badge.svg)](https://github.com/maximtz13/WinChime/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 One application for Windows sound and startup personalisation: system event sounds, sound
 schemes, the logon chime, wallpaper and the lock screen.
 
@@ -162,6 +165,18 @@ persistent elevated helper service is far more attack surface than a personalisa
 deserves.
 
 ---
+
+## Install
+
+Grab a build from [Releases](https://github.com/maximtz13/WinChime/releases):
+
+| File | Size | Requires |
+|------|------|----------|
+| `WinChime-<version>-win-x64.zip` | ~0.3 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) |
+| `WinChime-<version>-win-x64-self-contained.zip` | ~155 MB | nothing, fully standalone |
+
+The binaries are unsigned, so SmartScreen will show "Windows protected your PC" on first
+run — *More info* → *Run anyway*. Building from source (below) avoids that entirely.
 
 ## Build and run
 
