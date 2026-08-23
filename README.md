@@ -63,10 +63,16 @@ changes apply immediately with no reboot and no `WM_SETTINGCHANGE` broadcast.
 Because `.Default` is stored per event, **restore-to-Windows-default is free** and does not
 depend on our own backups.
 
-Two things this does that the Sound control panel does not:
+Three things this does that the Sound control panel does not:
 
 - **Validates the WAV.** Windows accepts any file and then plays *nothing* if it is not
   uncompressed PCM — no error, no log entry. `WaveFile` parses the RIFF header and says so.
+- **Converts what will not work.** Detecting the problem is only half an answer. Pick an
+  MP3, M4A, WMA or FLAC and `AudioTranscoder` offers to convert it to PCM WAV, writing the
+  copy to `%LOCALAPPDATA%\WinChime\converted` — a persistent location, because the registry
+  points at it and a temp folder would leave every converted sound broken after a reboot.
+  Decoding goes through Media Foundation, so the readable formats are whatever the host
+  Windows supports.
 - **Flags broken assignments.** A sound pointing at a deleted file also fails silently.
   The Status column shows `Missing`.
 
@@ -237,8 +243,21 @@ src/WinChime.App/           WPF UI (net8.0-windows, asInvoker manifest)
 ```
 
 `WinChime.Core` targets `net8.0-windows` specifically so `Microsoft.Win32.Registry`,
-`WindowsIdentity` and the Win32 P/Invokes resolve from the shared framework with no package
-references. (Verified: builds clean with zero package references.)
+`WindowsIdentity` and the Win32 P/Invokes resolve from the shared framework without package
+references.
+
+The one NuGet dependency is **NAudio 2.2.1**, used to decode audio for conversion. The
+alternative was P/Invoking Media Foundation directly to keep a zero-dependency build —
+several hundred lines of COM interop for the same result, and interop that is much easier
+to get subtly wrong than to review. Pinned to 2.x because NAudio 3.x requires .NET 9.
+
+> **Building on a machine with Smart App Control enabled:** SAC in Enforce mode blocks
+> loading freshly built unsigned assemblies, so `dotnet test` can fail with
+> `An Application Control policy has blocked this file (0x800711C7)` even though the build
+> succeeded. Check with
+> `Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy` — a
+> `VerifiedAndReputablePolicyState` of `1` means Enforce. CI is unaffected. Note that
+> turning SAC off is **irreversible** without reinstalling Windows.
 
 Every mutating call returns an `OperationResult` rather than throwing, so the UI can show a
 precise reason (access denied, policy blocked, file missing) instead of a stack trace.
@@ -255,10 +274,12 @@ precise reason (access denied, policy blocked, file missing) instead of a stack 
 
 ## Known limitations
 
-- **No audio transcoding.** Non-PCM files are detected and explained but not converted.
-  Adding NAudio (or a Media Foundation P/Invoke path) would fix this at the cost of the
-  zero-dependency property. Currently the user is told to re-encode.
 - **Lock screen greys out Settings** while applied. Inherent to the CSP mechanism.
+- **Conversion needs Media Foundation.** Absent on Server SKUs without Desktop Experience
+  and on "N" editions without the Media Feature Pack. `AudioTranscoder.IsAvailable` probes
+  for it and the UI degrades to a clear message rather than failing obscurely.
+- **No trimming or normalisation yet.** Over-long files are flagged but not shortened, and
+  quiet files are not levelled. Natural follow-ups now that decoding exists.
 - **Scheme apply is not atomic.** A partial scheme leaves unlisted events untouched rather
   than silencing them, which is the safer failure mode but means "apply" is not a clean
   reset. Use *Windows Default* for that.

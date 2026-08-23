@@ -206,6 +206,59 @@ public partial class MainWindow : Window
         WaveWarnings.Text = string.Join(Environment.NewLine + Environment.NewLine, info.Warnings);
     }
 
+    /// <summary>
+    /// Turns whatever the user picked into something Windows can actually play, converting
+    /// when necessary. Returns null when the user backs out or conversion fails.
+    ///
+    /// This is the single choke point for assigning audio, so an MP3 gets the same
+    /// treatment whether it is destined for a system event or the logon chime.
+    /// </summary>
+    private string? ResolveAssignableSound(string path)
+    {
+        if (!AudioTranscoder.NeedsConversion(path)) return path;
+
+        var info = WaveFile.Inspect(path);
+        var described = info.IsValid
+            ? info.FormatName
+            : Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
+
+        // Without Media Foundation there is nothing to offer but the old warning.
+        if (!AudioTranscoder.IsAvailable)
+        {
+            var proceed = MessageBox.Show(
+                $"{Path.GetFileName(path)} is {described}, not uncompressed PCM, and audio conversion " +
+                "is unavailable on this Windows installation.\n\n" +
+                "Windows will accept the assignment but the event will play silently.\n\n" +
+                "Assign it anyway?",
+                "Cannot convert on this PC",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            return proceed == MessageBoxResult.Yes ? path : null;
+        }
+
+        var convert = MessageBox.Show(
+            $"{Path.GetFileName(path)} is {described}. Windows only plays uncompressed PCM for event " +
+            "sounds, so assigning it directly would leave the event silent with no error.\n\n" +
+            "Convert it to PCM WAV and use the converted copy?\n\n" +
+            $"The copy is saved in:\n{AudioTranscoder.ConvertedFolder}",
+            "Conversion needed",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (convert != MessageBoxResult.Yes) return null;
+
+        var result = AudioTranscoder.ConvertIntoLibrary(path);
+        if (!result.Success)
+        {
+            Report(OperationResult.Fail(result.Message));
+            return null;
+        }
+
+        SetStatus(result.Message);
+        return result.OutputPath;
+    }
+
     private void BrowseSound_Click(object sender, RoutedEventArgs e)
     {
         if (EventList.SelectedItem is not SoundEvent soundEvent)
@@ -214,31 +267,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        var path = PickFile($"Choose a sound for {soundEvent.EventDisplayName}", WavFilter);
+        var picked = PickFile(
+            $"Choose a sound for {soundEvent.EventDisplayName}",
+            AudioTranscoder.OpenFileFilter);
+
+        if (picked is null) return;
+
+        var path = ResolveAssignableSound(picked);
         if (path is null) return;
-
-        var info = WaveFile.Inspect(path);
-
-        if (!info.IsValid)
-        {
-            MessageBox.Show(info.Error, "Not a usable WAV file", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        // Warn but allow: the user may know something we do not, and the assignment is
-        // trivially reversible. Refusing outright would be more annoying than helpful.
-        if (!info.IsPlayableByWindows)
-        {
-            var proceed = MessageBox.Show(
-                $"This file is {info.FormatName}, not uncompressed PCM.\n\n" +
-                "Windows will accept the assignment but the event will play silently.\n\n" +
-                "Assign it anyway?",
-                "Unsupported audio format",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-
-            if (proceed != MessageBoxResult.Yes) return;
-        }
 
         Report(_sounds.SetSound(soundEvent.AppKey, soundEvent.EventKey, path));
         ReloadEvents();
@@ -516,7 +552,12 @@ public partial class MainWindow : Window
 
     private void BrowseChime_Click(object sender, RoutedEventArgs e)
     {
-        var path = PickFile("Choose a logon chime", WavFilter);
+        var picked = PickFile("Choose a logon chime", AudioTranscoder.OpenFileFilter);
+        if (picked is null) return;
+
+        // Same conversion path as event sounds. LogonChimeService refuses non-PCM outright,
+        // so without this an MP3 would be rejected at Install time with nothing offered.
+        var path = ResolveAssignableSound(picked);
         if (path is null) return;
 
         ChimePathBox.Text = path;
