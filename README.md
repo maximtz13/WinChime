@@ -73,6 +73,13 @@ Three things this does that the Sound control panel does not:
   points at it and a temp folder would leave every converted sound broken after a reboot.
   Decoding goes through Media Foundation, so the readable formats are whatever the host
   Windows supports.
+- **Trims and evens out volume, on request.** Both alter the audio, so neither happens
+  silently — the conversion dialog asks, and trim is pre-ticked only when the source is
+  genuinely too long for an event sound. Trimming applies a short fade at the cut, because
+  slicing mid-waveform leaves a discontinuity that is audible as a click. Normalisation is
+  peak-based with a gain ceiling, so a near-silent clip does not get its noise floor hauled
+  up into audibility. *Trim / adjust…* applies the same processing to a sound that already
+  works.
 - **Flags broken assignments.** A sound pointing at a deleted file also fails silently.
   The Status column shows `Missing`.
 
@@ -349,8 +356,9 @@ precise reason (access denied, policy blocked, file missing) instead of a stack 
 - **Conversion needs Media Foundation.** Absent on Server SKUs without Desktop Experience
   and on "N" editions without the Media Feature Pack. `AudioTranscoder.IsAvailable` probes
   for it and the UI degrades to a clear message rather than failing obscurely.
-- **No trimming or normalisation yet.** Over-long files are flagged but not shortened, and
-  quiet files are not levelled. Natural follow-ups now that decoding exists.
+- **Trimming and normalising buffer the audio in memory**, capped at two minutes. Event
+  sounds are seconds long, so this is far above any real input, but a longer file is cut at
+  that point and the result says so rather than truncating quietly.
 - **Scheme apply is not atomic.** A partial scheme leaves unlisted events untouched rather
   than silencing them, which is the safer failure mode but means "apply" is not a clean
   reset. Use *Windows Default* for that.

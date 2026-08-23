@@ -260,18 +260,16 @@ public partial class MainWindow : Window
             return proceed == MessageBoxResult.Yes ? path : null;
         }
 
-        var convert = MessageBox.Show(
-            $"{Path.GetFileName(path)} is {described}. Windows only plays uncompressed PCM for event " +
-            "sounds, so assigning it directly would leave the event silent with no error.\n\n" +
-            "Convert it to PCM WAV and use the converted copy?\n\n" +
-            $"The copy is saved in:\n{AudioTranscoder.ConvertedFolder}",
-            "Conversion needed",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+        var options = ConvertOptionsDialog.Ask(this, path, info, conversionRequired: true);
+        if (options is null) return null;
 
-        if (convert != MessageBoxResult.Yes) return null;
+        return RunConversion(path, options);
+    }
 
-        var result = AudioTranscoder.ConvertIntoLibrary(path);
+    private string? RunConversion(string path, TranscodeOptions options)
+    {
+        var result = AudioTranscoder.ConvertIntoLibrary(path, destinationFolder: null, options);
+
         if (!result.Success)
         {
             Report(OperationResult.Fail(result.Message));
@@ -343,6 +341,45 @@ public partial class MainWindow : Window
         if (EventList.SelectedItem is not SoundEvent soundEvent) return;
 
         Report(_sounds.RestoreDefault(soundEvent.AppKey, soundEvent.EventKey));
+        ReloadEvents();
+    }
+
+    /// <summary>
+    /// Trim or normalise a sound that already works. The result is written as a new file
+    /// rather than edited in place, because the source may be a Windows default or a file
+    /// another event is also pointing at.
+    /// </summary>
+    private void AdjustSound_Click(object sender, RoutedEventArgs e)
+    {
+        if (EventList.SelectedItem is not SoundEvent soundEvent)
+        {
+            SetStatus("Select an event first.");
+            return;
+        }
+
+        var current = soundEvent.CurrentPath;
+
+        if (string.IsNullOrWhiteSpace(current) || !File.Exists(current))
+        {
+            SetStatus("That event has no playable sound to adjust.");
+            return;
+        }
+
+        if (!AudioTranscoder.IsAvailable)
+        {
+            Report(OperationResult.Fail(
+                "Audio processing is unavailable on this Windows installation, so sounds cannot be " +
+                "trimmed or normalised here."));
+            return;
+        }
+
+        var options = ConvertOptionsDialog.Ask(this, current, WaveFile.Inspect(current), conversionRequired: false);
+        if (options is null) return;
+
+        var path = RunConversion(current, options);
+        if (path is null) return;
+
+        Report(_sounds.SetSound(soundEvent.AppKey, soundEvent.EventKey, path));
         ReloadEvents();
     }
 
