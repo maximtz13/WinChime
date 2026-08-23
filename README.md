@@ -11,6 +11,28 @@ change is either per-user or a single documented registry value, and every chang
 reversible from inside the app. See [Scope](#scope) for what was deliberately left out and
 why.
 
+![The Sounds tab](docs/screenshots/01-sounds.png)
+
+<details>
+<summary><b>More screenshots</b> — Startup, Desktop &amp; Lock screen, System &amp; Safety</summary>
+
+### Startup
+
+Preview the built-in Windows chime without enabling it, or install your own via a per-user
+logon task.
+
+![The Startup tab](docs/screenshots/02-startup.png)
+
+### Desktop and lock screen
+
+![The Desktop and Lock screen tab](docs/screenshots/03-desktop.png)
+
+### System and safety
+
+![The System and Safety tab](docs/screenshots/04-system.png)
+
+</details>
+
 ---
 
 ## Risk tiers
