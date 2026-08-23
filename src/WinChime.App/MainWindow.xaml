@@ -97,6 +97,10 @@
                                 <Button Content="Silence" Click="SilenceSound_Click" />
                                 <Button Content="Restore default" Click="RestoreSound_Click" MinWidth="120" />
                             </WrapPanel>
+                            <WrapPanel Margin="0,6,0,0">
+                                <Button Content="Trim / adjust…" Click="AdjustSound_Click" MinWidth="120"
+                                        ToolTip="Trim the assigned sound or even out its volume, saving the result as a new file." />
+                            </WrapPanel>
 
                             <TextBlock Style="{StaticResource Hint}" Margin="0,14,0,0"
                                        Text="Windows reads these values each time an event fires, so changes apply immediately — no reboot needed. Event sounds must be uncompressed PCM .wav; Windows accepts anything else and then plays silently with no error. Pick an MP3, M4A, WMA or FLAC and WinChime offers to convert it for you." />

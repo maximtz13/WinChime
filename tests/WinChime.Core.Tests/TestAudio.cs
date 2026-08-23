@@ -13,13 +13,17 @@ namespace WinChime.Core.Tests;
 /// </summary>
 public static class TestAudio
 {
-    /// <summary>Writes a sine tone as PCM WAV and returns the path.</summary>
+    /// <summary>
+    /// Writes a sine tone as PCM WAV and returns the path. <paramref name="amplitude"/> is
+    /// the peak, 0..1, which is what the normalisation tests vary.
+    /// </summary>
     public static string WriteTone(
         string path,
         double seconds = 1.0,
         int frequencyHz = 440,
         int sampleRate = 44100,
-        int channels = 1)
+        int channels = 1,
+        double amplitude = 0.25)
     {
         var format = new WaveFormat(sampleRate, 16, channels);
         using var writer = new WaveFileWriter(path, format);
@@ -27,12 +31,16 @@ public static class TestAudio
         var frames = (int)(sampleRate * seconds);
         for (var i = 0; i < frames; i++)
         {
-            var sample = (float)(Math.Sin(2 * Math.PI * frequencyHz * i / sampleRate) * 0.25);
+            var sample = (float)(Math.Sin(2 * Math.PI * frequencyHz * i / sampleRate) * amplitude);
             for (var c = 0; c < channels; c++) writer.WriteSample(sample);
         }
 
         return path;
     }
+
+    /// <summary>Writes digital silence: a valid PCM WAV whose samples are all zero.</summary>
+    public static string WriteSilence(string path, double seconds = 1.0, int sampleRate = 44100)
+        => WriteTone(path, seconds, 440, sampleRate, 1, amplitude: 0.0);
 
     /// <summary>
     /// Whether this machine can produce an MP3. The GitHub Actions Windows runners are

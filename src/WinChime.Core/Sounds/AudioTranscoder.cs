@@ -10,7 +10,8 @@ public sealed record TranscodeResult(bool Success, string? OutputPath, string Me
 }
 
 /// <summary>
-/// Converts arbitrary audio into the uncompressed PCM WAV that Windows sound events require.
+/// Converts arbitrary audio into the uncompressed PCM WAV that Windows sound events require,
+/// optionally trimming and normalising on the way through.
 ///
 /// This exists because of a genuinely bad failure mode: Windows accepts any file for a sound
 /// event and, if it is not PCM, plays absolutely nothing — no error, no log entry. Detecting
@@ -25,13 +26,15 @@ public sealed record TranscodeResult(bool Success, string? OutputPath, string Me
 /// </summary>
 public static class AudioTranscoder
 {
-    /// <summary>Windows event sounds are short; 44.1 kHz 16-bit stereo is ample and universally safe.</summary>
-    public const int DefaultSampleRate = 44100;
-    public const int DefaultBitsPerSample = 16;
-    public const int DefaultChannels = 2;
-
     private static readonly string[] KnownSourceExtensions =
         [".wav", ".mp3", ".m4a", ".aac", ".wma", ".flac", ".mp4", ".adts"];
+
+    /// <summary>
+    /// Trimming and normalising need the audio in memory. Event sounds are seconds long, so
+    /// this ceiling is far above any legitimate input while keeping a pathological file from
+    /// exhausting memory. Two minutes of 44.1 kHz stereo float is roughly 42 MB.
+    /// </summary>
+    private static readonly TimeSpan MaxBufferedDuration = TimeSpan.FromMinutes(2);
 
     private static bool? _available;
 
@@ -89,10 +92,6 @@ public static class AudioTranscoder
         return !info.IsValid || !info.IsPlayableByWindows;
     }
 
-    /// <summary>
-    /// Converts into <see cref="ConvertedFolder"/> under a name derived from the source,
-    /// and returns the path to the converted file.
-    /// </summary>
     /// <param name="destinationFolder">
     /// Defaults to <see cref="ConvertedFolder"/>. Overridable so tests can write somewhere
     /// disposable instead of into the running user's real sound library.
@@ -100,9 +99,7 @@ public static class AudioTranscoder
     public static TranscodeResult ConvertIntoLibrary(
         string sourcePath,
         string? destinationFolder = null,
-        int sampleRate = DefaultSampleRate,
-        int bitsPerSample = DefaultBitsPerSample,
-        int channels = DefaultChannels)
+        TranscodeOptions? options = null)
     {
         var folder = destinationFolder ?? ConvertedFolder;
 
@@ -131,22 +128,28 @@ public static class AudioTranscoder
             attempt++;
         }
 
-        return Convert(sourcePath, destination, sampleRate, bitsPerSample, channels);
+        return Convert(sourcePath, destination, options);
     }
 
     /// <summary>Converts <paramref name="sourcePath"/> to PCM WAV at <paramref name="destinationPath"/>.</summary>
     public static TranscodeResult Convert(
         string sourcePath,
         string destinationPath,
-        int sampleRate = DefaultSampleRate,
-        int bitsPerSample = DefaultBitsPerSample,
-        int channels = DefaultChannels)
+        TranscodeOptions? options = null)
     {
+        options ??= TranscodeOptions.Default;
+
         if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
             return TranscodeResult.Fail($"Source file not found: {sourcePath}");
 
         if (PathsMatch(sourcePath, destinationPath))
             return TranscodeResult.Fail("Source and destination are the same file.");
+
+        if (options.ModifiesAudio && options.BitsPerSample is not (16 or 24))
+        {
+            return TranscodeResult.Fail(
+                $"Trimming and normalising are implemented for 16- and 24-bit output, not {options.BitsPerSample}-bit.");
+        }
 
         if (!IsAvailable)
         {
@@ -156,10 +159,12 @@ public static class AudioTranscoder
                 "N edition without the Media Feature Pack. Supply an uncompressed PCM .wav instead.");
         }
 
+        ProcessingOutcome? outcome = null;
+
         try
         {
             using var reader = new MediaFoundationReader(sourcePath);
-            var targetFormat = new WaveFormat(sampleRate, bitsPerSample, channels);
+            var targetFormat = new WaveFormat(options.SampleRate, options.BitsPerSample, options.Channels);
 
             // Even a PCM source usually needs this: sample rate, bit depth and channel count
             // rarely all match the target, and the resampler is a no-op when they do.
@@ -168,7 +173,15 @@ public static class AudioTranscoder
                 ResamplerQuality = 60,   // NAudio maps 60 to the highest-quality MF setting
             };
 
-            WaveFileWriter.CreateWaveFile(destinationPath, resampler);
+            if (options.ModifiesAudio)
+            {
+                outcome = WriteProcessed(resampler, targetFormat, destinationPath, options);
+            }
+            else
+            {
+                // Streaming path: no reason to buffer when nothing is being altered.
+                WaveFileWriter.CreateWaveFile(destinationPath, resampler);
+            }
         }
         catch (Exception ex)
         {
@@ -188,11 +201,124 @@ public static class AudioTranscoder
                 $"Conversion produced a file Windows still cannot play ({info.Error ?? info.FormatName}).");
         }
 
-        return new TranscodeResult(
-            true,
-            destinationPath,
-            $"Converted to {info.Summary}.");
+        return new TranscodeResult(true, destinationPath, DescribeResult(info, outcome, options));
     }
+
+    // ------------------------------------------------------------------ processing --
+
+    private sealed record ProcessingOutcome(bool Trimmed, double GainDb, bool HitBufferCap);
+
+    /// <summary>
+    /// Decodes into memory so the peak can be measured before any gain is applied, then
+    /// trims, fades and writes. Two passes over the audio are unavoidable for peak
+    /// normalisation: you cannot know the correct gain until you have seen every sample.
+    /// </summary>
+    private static ProcessingOutcome WriteProcessed(
+        IWaveProvider source, WaveFormat targetFormat, string destinationPath, TranscodeOptions options)
+    {
+        var channels = targetFormat.Channels;
+        var sampleRate = targetFormat.SampleRate;
+
+        var capFrames = (long)(MaxBufferedDuration.TotalSeconds * sampleRate);
+        var requestedFrames = options.MaxDuration is { } limit
+            ? (long)Math.Round(limit.TotalSeconds * sampleRate)
+            : long.MaxValue;
+
+        var maxFrames = Math.Min(requestedFrames, capFrames);
+
+        var samples = source.ToSampleProvider();
+        var buffer = new List<float>();
+        var chunk = new float[sampleRate * channels];   // one second at a time
+        var cutShort = false;
+
+        int read;
+        while (buffer.Count / channels < maxFrames && (read = samples.Read(chunk, 0, chunk.Length)) > 0)
+        {
+            var room = (int)Math.Min(read, (maxFrames - buffer.Count / channels) * channels);
+
+            for (var i = 0; i < room; i++) buffer.Add(chunk[i]);
+
+            if (room < read) { cutShort = true; break; }
+        }
+
+        // Reaching the limit exactly is not the same as cutting audio off. Only a further
+        // read proves there was more, and only then does the fade earn its place.
+        if (!cutShort && maxFrames != long.MaxValue && buffer.Count / channels >= maxFrames)
+            cutShort = samples.Read(chunk, 0, chunk.Length) > 0;
+
+        var gainDb = 0.0;
+        if (options.Normalise && buffer.Count > 0)
+        {
+            var peak = 0f;
+            foreach (var sample in buffer)
+            {
+                var magnitude = Math.Abs(sample);
+                if (magnitude > peak) peak = magnitude;
+            }
+
+            // Below this the clip is effectively silence, and "normalising" it would just
+            // amplify the noise floor into something audible and unpleasant.
+            if (peak > 0.0001f)
+            {
+                var gain = options.TargetPeak / peak;
+                var ceiling = Math.Pow(10, options.MaxGainDb / 20.0);
+                gain = Math.Min(gain, ceiling);
+
+                for (var i = 0; i < buffer.Count; i++) buffer[i] = (float)(buffer[i] * gain);
+
+                gainDb = 20 * Math.Log10(gain);
+            }
+        }
+
+        if (cutShort && options.FadeOut > TimeSpan.Zero && buffer.Count > 0)
+        {
+            var totalFrames = buffer.Count / channels;
+            var fadeFrames = (int)Math.Min(
+                Math.Round(options.FadeOut.TotalSeconds * sampleRate),
+                totalFrames);
+
+            var startFrame = totalFrames - fadeFrames;
+
+            for (var frame = 0; frame < fadeFrames; frame++)
+            {
+                var gain = 1f - (float)frame / fadeFrames;
+                for (var channel = 0; channel < channels; channel++)
+                    buffer[(startFrame + frame) * channels + channel] *= gain;
+            }
+        }
+
+        using (var writer = new WaveFileWriter(destinationPath, targetFormat))
+        {
+            // Clamp rather than let gain wrap around into loud digital distortion.
+            foreach (var sample in buffer) writer.WriteSample(Math.Clamp(sample, -1f, 1f));
+        }
+
+        var hitCap = cutShort && requestedFrames > capFrames;
+        return new ProcessingOutcome(cutShort, gainDb, hitCap);
+    }
+
+    private static string DescribeResult(WaveInfo info, ProcessingOutcome? outcome, TranscodeOptions options)
+    {
+        var message = $"Converted to {info.Summary}.";
+
+        if (outcome is null) return message;
+
+        if (outcome.Trimmed)
+        {
+            message += options.MaxDuration is { } limit && !outcome.HitBufferCap
+                ? $" Trimmed to {limit.TotalSeconds:0.#}s with a short fade at the cut."
+                : $" Trimmed at the {MaxBufferedDuration.TotalMinutes:0} minute processing limit.";
+        }
+
+        if (Math.Abs(outcome.GainDb) > 0.05)
+            message += $" Volume {(outcome.GainDb > 0 ? "raised" : "lowered")} by {Math.Abs(outcome.GainDb):0.#} dB.";
+        else if (options.Normalise)
+            message += " Volume was already at the target level.";
+
+        return message;
+    }
+
+    // -------------------------------------------------------------------- helpers --
 
     private static bool PathsMatch(string a, string b)
     {
