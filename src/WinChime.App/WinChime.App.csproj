@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>WinChime.App</RootNamespace>
+    <AssemblyName>WinChime</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WinExe (not Exe) matters: the play-chime logon task must not flash a console. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WinChime.Core\WinChime.Core.csproj" />
+  </ItemGroup>
+
+</Project>

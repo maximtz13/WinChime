@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>WinChime.Core</RootNamespace>
+    <!-- Zero NuGet dependencies: Registry, System.Text.Json and P/Invoke are all in-box
+         for a net8.0-windows target. Keeps offline builds and code-signing simple. -->
+  </PropertyGroup>
+
+</Project>

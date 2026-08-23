@@ -1,0 +1,11 @@
+# Normalise line endings in the repository, check out native on each platform.
+* text=auto
+
+# Visual Studio requires CRLF in solution files.
+*.sln text eol=crlf
+
+# Never munge binary assets.
+*.wav binary
+*.png binary
+*.jpg binary
+*.ico binary
