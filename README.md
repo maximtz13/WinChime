@@ -76,9 +76,33 @@ Three things this does that the Sound control panel does not:
 - **Flags broken assignments.** A sound pointing at a deleted file also fails silently.
   The Status column shows `Missing`.
 
-Schemes export to a portable `.winchime.json` holding *unexpanded* registry values, so
-`%SystemRoot%` still resolves correctly on another machine. Import reports entries whose
-audio file does not exist on the target PC rather than assigning dead paths.
+### Sound packs — `SoundPackService`
+
+Two export formats, because they solve different problems:
+
+| Format | Contents | Use when |
+|---|---|---|
+| `.winchime.json` | Registry paths only | Backing up or moving between your own machines |
+| `.winchimepack` | Scheme **plus the audio**, one zip | Sending a scheme to someone else |
+
+A bare `.json` scheme stores *unexpanded* registry values so `%SystemRoot%` resolves
+correctly anywhere — but it only works on a machine that already has identical files at
+identical paths, which in practice means it does not travel. A pack is one file you can
+hand to someone.
+
+Two things a pack deliberately does **not** contain:
+
+- **Windows' own sounds.** An assignment pointing at `%SystemRoot%\media\...` is kept as
+  that literal string. Those files exist on every Windows install, so bundling them would
+  bloat the pack and redistribute Microsoft's audio for no benefit.
+- **Duplicates.** One file referenced by twelve events is stored once and referenced twelve
+  times.
+
+Installing validates before extracting. Entry paths are checked so a hostile entry named
+`../../evil.exe` cannot write outside the pack folder — packs are files people receive from
+other people, so that is a real attack surface rather than a theoretical one — and entry
+count and total uncompressed size are bounded against zip bombs. Missing or dangling
+entries are reported rather than silently assigned.
 
 ### The logon chime — `StartupSoundService` / `LogonChimeService`
 
@@ -109,8 +133,9 @@ A delay slider matters more than it looks: at logon the shell is still starting 
 endpoints may not be ready, so a zero-delay sound is frequently inaudible. Default is 4s.
 
 Registered through `schtasks.exe` with an XML definition rather than the Task Scheduler COM
-API, to keep the Core assembly dependency-free. Note `schtasks` requires the XML file to be
-**UTF-16**; UTF-8 is rejected with an unhelpful parse error.
+API — a one-off registration does not justify another dependency, and the XML is
+inspectable by anyone wondering what runs at their logon. Note `schtasks` requires the XML
+file to be **UTF-16**; UTF-8 is rejected with an unhelpful parse error.
 
 ### Lock screen — `LockScreenService`
 
@@ -181,8 +206,58 @@ Grab a build from [Releases](https://github.com/maximtz13/WinChime/releases):
 | `WinChime-<version>-win-x64.zip` | ~0.3 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) |
 | `WinChime-<version>-win-x64-self-contained.zip` | ~155 MB | nothing, fully standalone |
 
-The binaries are unsigned, so SmartScreen will show "Windows protected your PC" on first
-run — *More info* → *Run anyway*. Building from source (below) avoids that entirely.
+The binaries are unsigned. See [Windows may block it on first run](#windows-may-block-it-on-first-run)
+before you assume something is broken.
+
+## Windows may block it on first run
+
+Two different mechanisms, with two different answers.
+
+### SmartScreen — "Windows protected your PC"
+
+A blue dialog you can dismiss: **More info → Run anyway**. It appears because the binary is
+unsigned and has no download reputation yet.
+
+### Smart App Control — a hard block
+
+On Windows 11 installs where Smart App Control is enabled, the app may be blocked outright
+rather than warned about. In logs it surfaces as
+`An Application Control policy has blocked this file (0x800711C7)`, with Code Integrity
+events 3077/3033/3118 naming policy `VerifiedAndReputableDesktop`.
+
+**Wait and try again.** SAC's verdict comes from a cloud reputation service, and a binary it
+has never seen is blocked until that check completes. Observed during development: a freshly
+built assembly was blocked, and the same file ran normally a short time later with no
+intervention at all.
+
+**Do not turn Smart App Control off to work around this.** Disabling it is **irreversible** —
+re-enabling requires resetting or reinstalling Windows. That is a permanent reduction in your
+machine's security to run one personalisation utility, and it is a bad trade.
+
+Check your state with:
+
+```bash
+Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy
+```
+
+`VerifiedAndReputablePolicyState` of `1` means Enforce, `2` Evaluation, `0` Off.
+
+### Why code signing is not the fix here
+
+The obvious response is "just sign it", and that turns out not to work. SAC checks
+reputation *first* and the certificate chain second: if reputation is unknown, it blocks
+**even a correctly signed binary**. New and low-distribution software gets blocked until
+enough people have run it safely, signature or not. A certificate would add cost without
+reliably solving this, so WinChime is not signed today. That decision gets revisited if real
+users report real friction, at which point signing plus accumulated download volume actually
+compounds.
+
+### If you are building from source
+
+The same applies — building locally does **not** avoid it. `dotnet test` can fail to load a
+freshly built assembly even though the build succeeded, because the output has a new hash
+that SAC has never seen. Retrying after a short delay generally works. CI is unaffected, as
+GitHub's runners do not have SAC.
 
 ## Build and run
 
@@ -233,7 +308,8 @@ dotnet publish src/WinChime.App -c Release -r win-x64 --self-contained false -p:
 ```
 src/WinChime.Core/          class library, no UI, zero NuGet dependencies
   Model/                    SoundEvent, SystemInfo, BackupManifest, OperationResult…
-  Sounds/                   SoundSchemeService, WaveFile, SoundPreview
+  Sounds/                   SoundSchemeService, WaveFile, SoundPreview,
+                            AudioTranscoder, SoundPackService
   Startup/                  StartupSoundService, LogonChimeService, SystemChimeResource
   Personalization/          WallpaperService, LockScreenService
   Safety/                   SystemProbe, BackupService, RestorePointService
@@ -251,13 +327,8 @@ alternative was P/Invoking Media Foundation directly to keep a zero-dependency b
 several hundred lines of COM interop for the same result, and interop that is much easier
 to get subtly wrong than to review. Pinned to 2.x because NAudio 3.x requires .NET 9.
 
-> **Building on a machine with Smart App Control enabled:** SAC in Enforce mode blocks
-> loading freshly built unsigned assemblies, so `dotnet test` can fail with
-> `An Application Control policy has blocked this file (0x800711C7)` even though the build
-> succeeded. Check with
-> `Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy` — a
-> `VerifiedAndReputablePolicyState` of `1` means Enforce. CI is unaffected. Note that
-> turning SAC off is **irreversible** without reinstalling Windows.
+> **If `dotnet test` fails to load the assembly it just built**, that is Smart App Control,
+> not your checkout. See [Windows may block it on first run](#windows-may-block-it-on-first-run).
 
 Every mutating call returns an `OperationResult` rather than throwing, so the UI can show a
 precise reason (access denied, policy blocked, file missing) instead of a stack trace.
@@ -288,8 +359,14 @@ precise reason (access denied, policy blocked, file missing) instead of a stack 
 
 ## Distribution notes
 
-- **Code signing.** Not strictly required now that no system binary is touched, but an EV
-  certificate still avoids SmartScreen friction on an unknown publisher.
+- **Code signing: deliberately not done yet.** A certificate would silence SmartScreen, but
+  it does *not* reliably satisfy Smart App Control, which weighs reputation ahead of
+  signature and blocks unknown-reputation binaries regardless. Azure Trusted Signing (renamed
+  Azure Artifact Signing in 2026) is the cheapest credible route at $9.99/month and is open
+  to individual developers, but identity validation is restricted to US and Canadian
+  applicants. Revisit when there are enough users for reputation and signature to compound.
+- **Accelerating reputation is free.** Releases can be submitted to Microsoft's security
+  portal for analysis, which targets the actual blocker rather than a proxy for it.
 - **Microsoft Store.** Store policy rules out an app that writes the HKLM and
   PersonalizationCSP values used here, so sideload/direct download only.
 
