@@ -76,9 +76,33 @@ Three things this does that the Sound control panel does not:
 - **Flags broken assignments.** A sound pointing at a deleted file also fails silently.
   The Status column shows `Missing`.
 
-Schemes export to a portable `.winchime.json` holding *unexpanded* registry values, so
-`%SystemRoot%` still resolves correctly on another machine. Import reports entries whose
-audio file does not exist on the target PC rather than assigning dead paths.
+### Sound packs — `SoundPackService`
+
+Two export formats, because they solve different problems:
+
+| Format | Contents | Use when |
+|---|---|---|
+| `.winchime.json` | Registry paths only | Backing up or moving between your own machines |
+| `.winchimepack` | Scheme **plus the audio**, one zip | Sending a scheme to someone else |
+
+A bare `.json` scheme stores *unexpanded* registry values so `%SystemRoot%` resolves
+correctly anywhere — but it only works on a machine that already has identical files at
+identical paths, which in practice means it does not travel. A pack is one file you can
+hand to someone.
+
+Two things a pack deliberately does **not** contain:
+
+- **Windows' own sounds.** An assignment pointing at `%SystemRoot%\media\...` is kept as
+  that literal string. Those files exist on every Windows install, so bundling them would
+  bloat the pack and redistribute Microsoft's audio for no benefit.
+- **Duplicates.** One file referenced by twelve events is stored once and referenced twelve
+  times.
+
+Installing validates before extracting. Entry paths are checked so a hostile entry named
+`../../evil.exe` cannot write outside the pack folder — packs are files people receive from
+other people, so that is a real attack surface rather than a theoretical one — and entry
+count and total uncompressed size are bounded against zip bombs. Missing or dangling
+entries are reported rather than silently assigned.
 
 ### The logon chime — `StartupSoundService` / `LogonChimeService`
 
@@ -233,7 +257,8 @@ dotnet publish src/WinChime.App -c Release -r win-x64 --self-contained false -p:
 ```
 src/WinChime.Core/          class library, no UI, zero NuGet dependencies
   Model/                    SoundEvent, SystemInfo, BackupManifest, OperationResult…
-  Sounds/                   SoundSchemeService, WaveFile, SoundPreview
+  Sounds/                   SoundSchemeService, WaveFile, SoundPreview,
+                            AudioTranscoder, SoundPackService
   Startup/                  StartupSoundService, LogonChimeService, SystemChimeResource
   Personalization/          WallpaperService, LockScreenService
   Safety/                   SystemProbe, BackupService, RestorePointService

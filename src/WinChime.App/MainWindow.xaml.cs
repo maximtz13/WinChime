@@ -106,7 +106,30 @@ public partial class MainWindow : Window
     private const string WavFilter = "Wave audio (*.wav)|*.wav|All files (*.*)|*.*";
     private const string ImageFilter =
         "Images (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|All files (*.*)|*.*";
-    private const string SchemeFilter = "WinChime scheme (*.winchime.json)|*.winchime.json|JSON (*.json)|*.json";
+    // A pack is listed first because it is almost always the right choice: a bare .json
+    // scheme only works on a machine that already has identical files at identical paths.
+    private const string SchemeSaveFilter =
+        "WinChime sound pack, includes audio (*.winchimepack)|*.winchimepack"
+        + "|WinChime scheme, paths only (*.winchime.json)|*.winchime.json";
+
+    private const string SchemeOpenFilter =
+        "Schemes and packs (*.winchimepack;*.winchime.json;*.json)|*.winchimepack;*.winchime.json;*.json"
+        + "|Sound pack (*.winchimepack)|*.winchimepack"
+        + "|Scheme (*.json)|*.json"
+        + "|All files (*.*)|*.*";
+
+    /// <summary>Surfaces non-fatal problems without turning them into a modal for every item.</summary>
+    private void ShowWarnings(string title, IReadOnlyList<string> warnings)
+    {
+        if (warnings.Count == 0) return;
+
+        MessageBox.Show(
+            string.Join(Environment.NewLine, warnings.Take(20))
+            + (warnings.Count > 20 ? $"{Environment.NewLine}… and {warnings.Count - 20} more." : ""),
+            title,
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
 
     // ================================================================== sounds ==
 
@@ -385,21 +408,56 @@ public partial class MainWindow : Window
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
             Title = "Export sound scheme",
-            Filter = SchemeFilter,
-            FileName = $"{name}.winchime.json",
+            Filter = SchemeSaveFilter,
+            FileName = name + SoundPackService.PackExtension,
+            DefaultExt = SoundPackService.PackExtension,
         };
 
         if (dialog.ShowDialog() != true) return;
 
-        Report(_sounds.ExportToFile(dialog.FileName, _sounds.BuildExport(name, Environment.UserName)));
+        var export = _sounds.BuildExport(name, Environment.UserName);
+
+        if (!dialog.FileName.EndsWith(SoundPackService.PackExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            Report(_sounds.ExportToFile(dialog.FileName, export));
+            return;
+        }
+
+        var pack = SoundPackService.Create(dialog.FileName, export);
+
+        if (!pack.Success)
+        {
+            Report(OperationResult.Fail(pack.Message));
+            return;
+        }
+
+        SetStatus(pack.Message);
+        ShowWarnings("Pack created, with some entries left out", pack.Warnings);
     }
 
     private void ImportScheme_Click(object sender, RoutedEventArgs e)
     {
-        var path = PickFile("Import sound scheme", SchemeFilter);
+        var path = PickFile("Import sound scheme or pack", SchemeOpenFilter);
         if (path is null) return;
 
-        var (export, error) = _sounds.ImportFromFile(path);
+        SchemeExport? export;
+        string? error;
+        IReadOnlyList<string> warnings = Array.Empty<string>();
+
+        if (path.EndsWith(SoundPackService.PackExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            var (scheme, result) = SoundPackService.Install(path);
+            export = scheme;
+            error = result.Success ? null : result.Message;
+            warnings = result.Warnings;
+
+            if (result.Success) SetStatus(result.Message);
+        }
+        else
+        {
+            (export, error) = _sounds.ImportFromFile(path);
+        }
+
         if (export is null)
         {
             Report(OperationResult.Fail(error ?? "Could not read that file."));
@@ -409,19 +467,10 @@ public partial class MainWindow : Window
         var (backupResult, _) = _backups.CreateSoundBackup($"Before importing: {export.Name}");
         if (!backupResult.Success) SetStatus($"Warning: backup failed ({backupResult.Message}).");
 
-        var (result, missing) = _sounds.ApplyExport(export);
-        Report(result);
+        var (result2, missing) = _sounds.ApplyExport(export);
+        Report(result2);
 
-        if (missing.Count > 0)
-        {
-            MessageBox.Show(
-                "These entries were skipped because the audio file does not exist on this PC:\n\n"
-                + string.Join(Environment.NewLine, missing.Take(20))
-                + (missing.Count > 20 ? $"{Environment.NewLine}… and {missing.Count - 20} more." : ""),
-                "Some sounds were skipped",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
+        ShowWarnings("Some entries were skipped", warnings.Concat(missing).ToList());
 
         ReloadEvents();
         ReloadSchemes();
