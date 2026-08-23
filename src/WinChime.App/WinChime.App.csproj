@@ -10,6 +10,7 @@
     <RootNamespace>WinChime.App</RootNamespace>
     <AssemblyName>WinChime</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\WinChime.ico</ApplicationIcon>
     <AssemblyTitle>WinChime</AssemblyTitle>
     <Description>Windows sound and startup personalisation: event sounds, sound schemes, the logon chime, wallpaper and the lock screen.</Description>
     <!-- WinExe (not Exe) matters: the play-chime logon task must not flash a console. -->
@@ -17,6 +18,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WinChime.Core\WinChime.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Also embedded as a Resource, separately from ApplicationIcon, so the Window can
+         reference it for the title bar and Alt+Tab. ApplicationIcon alone only sets the
+         icon on the exe file itself. -->
+    <Resource Include="Assets\WinChime.ico" />
   </ItemGroup>
 
 </Project>
