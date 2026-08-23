@@ -344,7 +344,27 @@ src/WinChime.Core/          class library, no UI, zero NuGet dependencies
   Elevation/                ElevationHelper  (the elevated-op protocol)
   Interop/                  NativeMethods, ProcessRunner
 src/WinChime.App/           WPF UI (net8.0-windows, asInvoker manifest)
+  Assets/WinChime.ico       app icon, generated (see below)
+tools/IconGenerator/        regenerates the icon; not in the solution
 ```
+
+The icon is generated rather than hand-drawn, and the generator is committed so the `.ico`
+is reproducible instead of being an unexplained binary blob:
+
+```bash
+dotnet run --project tools/IconGenerator
+```
+
+It emits nine sizes from 16 to 256. Frames below 256 are 32-bit BGRA BMPs, because BMP is
+what every shell back to XP understands. The 256 frame is PNG: that size only exists from
+Vista onward and everything able to read it also reads PNG, while as a BMP it alone is
+256 KB — the switch took the icon from 381 KB to 121 KB, which matters when the
+framework-dependent exe is only ~0.27 MB. (The legacy `System.Drawing.Icon` API cannot read
+PNG frames and falls back a size; WIC, which WPF and the shell use, reads all nine.)
+
+Below 24 px the mark drops from three arcs to two, because a third collapses into a smudge
+at that size. `IconGenerator` is deliberately excluded from `WinChime.sln` — it is a one-off
+design tool, not part of the product, and CI has no reason to build it.
 
 `WinChime.Core` targets `net8.0-windows` specifically so `Microsoft.Win32.Registry`,
 `WindowsIdentity` and the Win32 P/Invokes resolve from the shared framework without package
