@@ -1,0 +1,26 @@
+version: 2
+
+# The workflows shipped pinned to actions/checkout@v4 while v7 was current, which is how
+# the Node 20 deprecation warning appeared on the very first run. This keeps that from
+# drifting again without anyone having to remember.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
+
+  # NuGet is listed for completeness. The projects deliberately have zero package
+  # references today, so this stays quiet until that changes (for example if audio
+  # transcoding brings in NAudio).
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
