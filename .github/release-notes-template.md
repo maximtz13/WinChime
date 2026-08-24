@@ -28,8 +28,16 @@ full.
 
 ### What it does
 
-System event sounds and sound schemes, the Windows logon chime (including previewing the
-built-in one without enabling it), custom logon chimes, wallpaper and the lock screen.
+System event sounds and sound schemes. Mouse cursors, cursor schemes, and cursor packs that
+bundle a whole set into one shareable file. The Windows logon chime, including previewing the
+built-in one without enabling it, and custom logon chimes. Wallpaper, the accent colour, and
+the lock screen.
+
+It has a light and a dark theme, follows the Windows theme by default, and tints itself with
+your accent colour.
+
+A command line covers the same ground, so sound and cursor configuration is scriptable rather
+than click-only. Run `WinChime.exe --help` for the full list.
 
 ### What it deliberately does not do
 
