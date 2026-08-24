@@ -3,65 +3,106 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="WinChime — Windows sound and personalisation"
         Icon="Assets/WinChime.ico"
-        Height="720" Width="1080" MinHeight="560" MinWidth="880"
+        Height="760" Width="1320" MinHeight="600" MinWidth="1060"
+        Background="{DynamicResource Surface.Page}"
         WindowStartupLocation="CenterScreen">
 
     <DockPanel>
 
+        <!-- ============================================================== HEADER -->
+        <Border DockPanel.Dock="Top" Height="60" Padding="20,0"
+                Background="{DynamicResource Surface.Page}"
+                BorderBrush="{DynamicResource Border.Hairline}"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Source="Assets/WinChime.ico" Width="22" Height="22"
+                           Margin="0,0,10,0" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <TextBlock Text="WinChime" VerticalAlignment="Center"
+                               FontFamily="{DynamicResource Font.Display}"
+                               FontSize="17" FontWeight="SemiBold" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="Appearance" VerticalAlignment="Center" Margin="0,0,10,0"
+                               Foreground="{DynamicResource Text.Secondary}" />
+
+                    <!--
+                        Tag carries the ThemePreference name so one handler covers all three.
+                        Checked fires during load as well, which the handler guards against.
+                    -->
+                    <Border Style="{StaticResource SegmentTrack}">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="ThemeLightOption" Tag="Light" Content="Light"
+                                         Style="{StaticResource SegmentButton}" Checked="Theme_Checked" />
+                            <RadioButton x:Name="ThemeDarkOption" Tag="Dark" Content="Dark"
+                                         Style="{StaticResource SegmentButton}" Checked="Theme_Checked" />
+                            <RadioButton x:Name="ThemeSystemOption" Tag="System" Content="System"
+                                         Style="{StaticResource SegmentButton}" Checked="Theme_Checked"
+                                         ToolTip="Follow the Windows app theme, and keep following it if you change it." />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========================================================== STATUS BAR -->
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
-                <TextBlock x:Name="StatusText" Text="Ready." />
+                <TextBlock x:Name="StatusText" Text="Ready." Foreground="{DynamicResource Text.Secondary}" />
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock x:Name="ElevationText" Foreground="#666666" />
+                <TextBlock x:Name="ElevationText" Foreground="{DynamicResource Text.Tertiary}" />
             </StatusBarItem>
         </StatusBar>
 
-        <TabControl Margin="10">
+        <TabControl>
 
             <!-- ============================================================ SOUNDS -->
             <TabItem Header="Sounds">
-                <Grid Margin="10">
+                <Grid Margin="24,20,24,24">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-                        <TextBlock Text="Scheme" Style="{StaticResource FieldLabel}" MinWidth="52" />
+                    <!-- WrapPanel rather than StackPanel so the toolbar folds instead of clipping. -->
+                    <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Scheme" Style="{StaticResource FieldLabel}" MinWidth="0" Margin="0,0,10,0" />
                         <ComboBox x:Name="SchemeCombo" Width="240" VerticalAlignment="Center"
-                                  DisplayMemberPath="DisplayName" Margin="0,0,8,0" />
-                        <Button Content="Apply" Click="ApplyScheme_Click" />
-                        <Button Content="Save as…" Click="SaveScheme_Click" />
-                        <Button Content="Delete" Click="DeleteScheme_Click" />
-                        <Separator Margin="8,0" />
-                        <Button Content="Export…" Click="ExportScheme_Click" />
-                        <Button Content="Import…" Click="ImportScheme_Click" />
-                        <Separator Margin="8,0" />
+                                  DisplayMemberPath="DisplayName" Margin="0,0,10,0" />
+                        <Button Content="Apply" Click="ApplyScheme_Click" Style="{StaticResource PrimaryButton}"
+                                MinWidth="80" />
+                        <Button Content="Save as…" Click="SaveScheme_Click" Style="{StaticResource CompactButton}" />
+                        <Button Content="Delete" Click="DeleteScheme_Click" Style="{StaticResource CompactButton}" />
+                        <Separator />
+                        <Button Content="Export…" Click="ExportScheme_Click" Style="{StaticResource CompactButton}" />
+                        <Button Content="Import…" Click="ImportScheme_Click" Style="{StaticResource CompactButton}" />
+                        <Separator />
                         <Button x:Name="UndoButton" Content="Undo" Click="Undo_Click"
-                                IsEnabled="False" MinWidth="72" />
+                                IsEnabled="False" Style="{StaticResource CompactButton}" MinWidth="64" />
                         <Button x:Name="RedoButton" Content="Redo" Click="Redo_Click"
-                                IsEnabled="False" MinWidth="72" />
-                    </StackPanel>
+                                IsEnabled="False" Style="{StaticResource CompactButton}" MinWidth="64" />
+                    </WrapPanel>
 
-                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="Filter" Style="{StaticResource FieldLabel}" MinWidth="52" />
+                    <WrapPanel Grid.Row="1" Margin="0,0,0,12">
+                        <TextBlock Text="Filter" Style="{StaticResource FieldLabel}" MinWidth="0" Margin="0,0,10,0" />
                         <TextBox x:Name="FilterBox" Width="240" VerticalAlignment="Center"
-                                 TextChanged="Filter_TextChanged" Margin="0,0,12,0" />
+                                 TextChanged="Filter_TextChanged" Margin="0,0,16,0" />
                         <CheckBox x:Name="OnlyCustomised" Content="Only changed from default"
-                                  VerticalAlignment="Center" Margin="0,0,12,0"
+                                  VerticalAlignment="Center" Margin="0,0,16,0"
                                   Checked="Filter_Changed" Unchecked="Filter_Changed" />
                         <CheckBox x:Name="OnlyBroken" Content="Only broken (file missing)"
                                   VerticalAlignment="Center"
                                   Checked="Filter_Changed" Unchecked="Filter_Changed" />
-                    </StackPanel>
+                    </WrapPanel>
 
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="330" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="340" />
                         </Grid.ColumnDefinitions>
 
                         <ListView x:Name="EventList" Grid.Column="0"
@@ -81,65 +122,69 @@
                             </ListView.View>
                         </ListView>
 
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="Selected event" Style="{StaticResource SectionHeader}" />
-                            <TextBlock x:Name="SelectedTitle" TextWrapping="Wrap" FontWeight="SemiBold"
-                                       Margin="0,0,0,6" Text="Nothing selected" />
-                            <TextBlock x:Name="SelectedPath" Style="{StaticResource Hint}" />
+                        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Selected event" Style="{StaticResource SectionHeader}" />
+                                <TextBlock x:Name="SelectedTitle" TextWrapping="Wrap" FontWeight="SemiBold"
+                                           Margin="0,0,0,4" Text="Nothing selected" />
+                                <TextBlock x:Name="SelectedPath" Style="{StaticResource Hint}" />
 
-                            <Border BorderBrush="#DDDDDD" BorderThickness="1" Padding="8" Margin="0,0,0,10">
-                                <TextBlock x:Name="WaveInfoText" TextWrapping="Wrap"
-                                           Text="Select an event to inspect its audio file." />
-                            </Border>
+                                <Border Style="{StaticResource InfoCard}">
+                                    <TextBlock x:Name="WaveInfoText" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               Text="Select an event to inspect its audio file." />
+                                </Border>
 
-                            <TextBlock x:Name="WaveWarnings" Style="{StaticResource Warning}" />
+                                <TextBlock x:Name="WaveWarnings" Style="{StaticResource Warning}" />
 
-                            <WrapPanel>
-                                <Button Content="Browse…" Click="BrowseSound_Click" />
-                                <Button Content="Preview" Click="PreviewSound_Click" />
-                                <Button Content="Stop" Click="StopSound_Click" MinWidth="60" />
-                            </WrapPanel>
-                            <WrapPanel Margin="0,6,0,0">
-                                <Button Content="Silence" Click="SilenceSound_Click" />
-                                <Button Content="Restore default" Click="RestoreSound_Click" MinWidth="120" />
-                            </WrapPanel>
-                            <WrapPanel Margin="0,6,0,0">
-                                <Button Content="Trim / adjust…" Click="AdjustSound_Click" MinWidth="120"
-                                        ToolTip="Trim the assigned sound or even out its volume, saving the result as a new file." />
-                            </WrapPanel>
+                                <WrapPanel>
+                                    <Button Content="Browse…" Click="BrowseSound_Click" Style="{StaticResource CompactButton}" />
+                                    <Button Content="Preview" Click="PreviewSound_Click" Style="{StaticResource CompactButton}" />
+                                    <Button Content="Stop" Click="StopSound_Click" Style="{StaticResource CompactButton}" MinWidth="60" />
+                                </WrapPanel>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <Button Content="Silence" Click="SilenceSound_Click" Style="{StaticResource CompactButton}" />
+                                    <Button Content="Restore default" Click="RestoreSound_Click" Style="{StaticResource CompactButton}" MinWidth="120" />
+                                </WrapPanel>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <Button Content="Trim / adjust…" Click="AdjustSound_Click" Style="{StaticResource CompactButton}" MinWidth="120"
+                                            ToolTip="Trim the assigned sound or even out its volume, saving the result as a new file." />
+                                </WrapPanel>
 
-                            <TextBlock Style="{StaticResource Hint}" Margin="0,14,0,0"
-                                       Text="Windows reads these values each time an event fires, so changes apply immediately — no reboot needed. Event sounds must be uncompressed PCM .wav; Windows accepts anything else and then plays silently with no error. Pick an MP3, M4A, WMA or FLAC and WinChime offers to convert it for you." />
-                        </StackPanel>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,16,0,0"
+                                           Text="Windows reads these values each time an event fires, so changes apply immediately — no reboot needed. Event sounds must be uncompressed PCM .wav; Windows accepts anything else and then plays silently with no error. Pick an MP3, M4A, WMA or FLAC and WinChime offers to convert it for you." />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
                 </Grid>
             </TabItem>
 
             <!-- =========================================================== CURSORS -->
             <TabItem Header="Cursors">
-                <Grid Margin="10">
+                <Grid Margin="24,20,24,24">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-                        <TextBlock Text="Scheme" Style="{StaticResource FieldLabel}" MinWidth="52" />
+                    <WrapPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Scheme" Style="{StaticResource FieldLabel}" MinWidth="0" Margin="0,0,10,0" />
                         <ComboBox x:Name="CursorSchemeCombo" Width="260" VerticalAlignment="Center"
-                                  DisplayMemberPath="Name" Margin="0,0,8,0" />
-                        <Button Content="Apply" Click="ApplyCursorScheme_Click" />
-                        <Button Content="Save as…" Click="SaveCursorScheme_Click" />
-                        <Button Content="Delete" Click="DeleteCursorScheme_Click" />
-                        <Separator Margin="8,0" />
+                                  DisplayMemberPath="Name" Margin="0,0,10,0" />
+                        <Button Content="Apply" Click="ApplyCursorScheme_Click" Style="{StaticResource PrimaryButton}"
+                                MinWidth="80" />
+                        <Button Content="Save as…" Click="SaveCursorScheme_Click" Style="{StaticResource CompactButton}" />
+                        <Button Content="Delete" Click="DeleteCursorScheme_Click" Style="{StaticResource CompactButton}" />
+                        <Separator />
                         <Button Content="Undo" Click="UndoCursor_Click" x:Name="CursorUndoButton"
-                                IsEnabled="False" MinWidth="72" />
-                    </StackPanel>
+                                IsEnabled="False" Style="{StaticResource CompactButton}" MinWidth="64" />
+                    </WrapPanel>
 
                     <Grid Grid.Row="1">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="330" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="340" />
                         </Grid.ColumnDefinitions>
 
                         <ListView x:Name="CursorList" Grid.Column="0"
@@ -158,30 +203,33 @@
                             </ListView.View>
                         </ListView>
 
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="Selected cursor" Style="{StaticResource SectionHeader}" />
-                            <TextBlock x:Name="CursorSelectedTitle" TextWrapping="Wrap" FontWeight="SemiBold"
-                                       Margin="0,0,0,6" Text="Nothing selected" />
-                            <TextBlock x:Name="CursorSelectedPath" Style="{StaticResource Hint}" />
+                        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Selected cursor" Style="{StaticResource SectionHeader}" />
+                                <TextBlock x:Name="CursorSelectedTitle" TextWrapping="Wrap" FontWeight="SemiBold"
+                                           Margin="0,0,0,4" Text="Nothing selected" />
+                                <TextBlock x:Name="CursorSelectedPath" Style="{StaticResource Hint}" />
 
-                            <Border BorderBrush="#DDDDDD" BorderThickness="1" Padding="8" Margin="0,0,0,10">
-                                <TextBlock x:Name="CursorInfoText" TextWrapping="Wrap"
-                                           Text="Select a cursor to inspect its file." />
-                            </Border>
+                                <Border Style="{StaticResource InfoCard}">
+                                    <TextBlock x:Name="CursorInfoText" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               Text="Select a cursor to inspect its file." />
+                                </Border>
 
-                            <TextBlock x:Name="CursorWarnings" Style="{StaticResource Warning}" />
+                                <TextBlock x:Name="CursorWarnings" Style="{StaticResource Warning}" />
 
-                            <WrapPanel>
-                                <Button Content="Browse…" Click="BrowseCursor_Click" />
-                                <Button Content="Use system" Click="SystemCursor_Click" MinWidth="110"
-                                        ToolTip="Let Windows draw this cursor instead of using a file." />
-                            </WrapPanel>
+                                <WrapPanel>
+                                    <Button Content="Browse…" Click="BrowseCursor_Click" Style="{StaticResource CompactButton}" />
+                                    <Button Content="Use system" Click="SystemCursor_Click" Style="{StaticResource CompactButton}" MinWidth="110"
+                                            ToolTip="Let Windows draw this cursor instead of using a file." />
+                                </WrapPanel>
 
-                            <TextBlock Style="{StaticResource Hint}" Margin="0,14,0,0"
-                                       Text="Cursors apply immediately — the pointer changes as soon as you assign one, with no sign-out needed. Files must be .cur or .ani; an .ico renamed to .cur has no hotspot and Windows silently ignores it, so WinChime checks and tells you." />
-                            <TextBlock Style="{StaticResource Hint}"
-                                       Text="A scheme stores all seventeen cursors as one positional list. Changing a single cursor leaves the scheme marked as modified, exactly as the Mouse control panel does." />
-                        </StackPanel>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,16,0,0"
+                                           Text="Cursors apply immediately — the pointer changes as soon as you assign one, with no sign-out needed. Files must be .cur or .ani; an .ico renamed to .cur has no hotspot and Windows silently ignores it, so WinChime checks and tells you." />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="A scheme stores all seventeen cursors as one positional list. Changing a single cursor leaves the scheme marked as modified, exactly as the Mouse control panel does." />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
                 </Grid>
             </TabItem>
@@ -189,11 +237,11 @@
             <!-- =========================================================== STARTUP -->
             <TabItem Header="Startup">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="14" MaxWidth="820" HorizontalAlignment="Left">
+                    <StackPanel Margin="24,20,24,24" MaxWidth="880" HorizontalAlignment="Left">
 
                         <GroupBox Header="Windows built-in logon chime">
                             <StackPanel>
-                                <CheckBox x:Name="BuiltInChimeCheck" Margin="0,0,0,8"
+                                <CheckBox x:Name="BuiltInChimeCheck" Margin="0,0,0,10"
                                           Content="Play the Windows startup sound"
                                           Click="BuiltInChime_Click" />
                                 <TextBlock x:Name="BuiltInChimeNote" Style="{StaticResource Hint}" />
@@ -204,13 +252,13 @@
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Reading it, however, is completely safe. The buttons below map imageres.dll as a datafile and copy the audio out, so you can hear the built-in chime without enabling it — useful when deciding whether to replace it." />
 
-                                <WrapPanel Margin="0,2,0,6">
-                                    <Button Content="Preview it" Click="PreviewSystemChime_Click" MinWidth="110" />
-                                    <Button Content="Save a copy…" Click="SaveSystemChime_Click" MinWidth="120" />
-                                    <Button Content="Stop" Click="StopSound_Click" MinWidth="60" />
+                                <WrapPanel Margin="0,2,0,8">
+                                    <Button Content="Preview it" Click="PreviewSystemChime_Click" Style="{StaticResource CompactButton}" MinWidth="110" />
+                                    <Button Content="Save a copy…" Click="SaveSystemChime_Click" Style="{StaticResource CompactButton}" MinWidth="120" />
+                                    <Button Content="Stop" Click="StopSound_Click" Style="{StaticResource CompactButton}" MinWidth="60" />
                                 </WrapPanel>
 
-                                <TextBlock x:Name="SystemChimeInfo" Style="{StaticResource Hint}" />
+                                <TextBlock x:Name="SystemChimeInfo" Style="{StaticResource Hint}" Margin="0" />
                             </StackPanel>
                         </GroupBox>
 
@@ -219,31 +267,32 @@
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Registers a per-user logon task that plays your own .wav shortly after sign-in. Nothing in the Windows install is modified, so no Windows update can undo it and SFC stays clean. The trade-off is a small delay versus the real boot chime." />
 
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
                                     <TextBlock Text="Sound file" Style="{StaticResource FieldLabel}" />
-                                    <TextBox x:Name="ChimePathBox" Width="420" VerticalAlignment="Center"
-                                             IsReadOnly="True" Margin="0,0,6,0" />
-                                    <Button Content="Browse…" Click="BrowseChime_Click" />
+                                    <TextBox x:Name="ChimePathBox" Width="400" VerticalAlignment="Center"
+                                             IsReadOnly="True" Margin="0,0,8,0" />
+                                    <Button Content="Browse…" Click="BrowseChime_Click" Style="{StaticResource CompactButton}" />
                                 </StackPanel>
 
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                     <TextBlock Text="Delay" Style="{StaticResource FieldLabel}" />
                                     <Slider x:Name="ChimeDelaySlider" Width="240" Minimum="0" Maximum="30"
                                             TickFrequency="1" IsSnapToTickEnabled="True" Value="4"
-                                            VerticalAlignment="Center" Margin="0,0,10,0" />
-                                    <TextBlock x:Name="ChimeDelayText" VerticalAlignment="Center" MinWidth="120" />
+                                            VerticalAlignment="Center" Margin="0,0,12,0" />
+                                    <TextBlock x:Name="ChimeDelayText" VerticalAlignment="Center" MinWidth="120"
+                                               Foreground="{DynamicResource Text.Secondary}" />
                                 </StackPanel>
 
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="A few seconds of delay is usually necessary: at logon the shell is still starting and audio endpoints may not be ready, so a zero-delay sound is often inaudible." />
 
-                                <WrapPanel Margin="0,4,0,8">
-                                    <Button Content="Install" Click="InstallChime_Click" />
-                                    <Button Content="Remove" Click="RemoveChime_Click" />
-                                    <Button Content="Test now" Click="TestChime_Click" MinWidth="100" />
+                                <WrapPanel Margin="0,4,0,10">
+                                    <Button Content="Install" Click="InstallChime_Click" Style="{StaticResource PrimaryButton}" MinWidth="90" />
+                                    <Button Content="Remove" Click="RemoveChime_Click" Style="{StaticResource CompactButton}" MinWidth="90" />
+                                    <Button Content="Test now" Click="TestChime_Click" Style="{StaticResource CompactButton}" MinWidth="100" />
                                 </WrapPanel>
 
-                                <TextBlock x:Name="ChimeStatusText" Style="{StaticResource Hint}" />
+                                <TextBlock x:Name="ChimeStatusText" Style="{StaticResource Hint}" Margin="0" />
                             </StackPanel>
                         </GroupBox>
 
@@ -254,27 +303,28 @@
             <!-- =========================================================== DESKTOP -->
             <TabItem Header="Desktop &amp; Lock screen">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="14" MaxWidth="820" HorizontalAlignment="Left">
+                    <StackPanel Margin="24,20,24,24" MaxWidth="880" HorizontalAlignment="Left">
 
                         <GroupBox Header="Desktop wallpaper">
                             <StackPanel>
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Per-user, no administrator rights, instantly reversible from Settings afterwards." />
 
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
                                     <TextBlock Text="Image" Style="{StaticResource FieldLabel}" />
-                                    <TextBox x:Name="WallpaperPathBox" Width="420" VerticalAlignment="Center"
-                                             IsReadOnly="True" Margin="0,0,6,0" />
-                                    <Button Content="Browse…" Click="BrowseWallpaper_Click" />
+                                    <TextBox x:Name="WallpaperPathBox" Width="400" VerticalAlignment="Center"
+                                             IsReadOnly="True" Margin="0,0,8,0" />
+                                    <Button Content="Browse…" Click="BrowseWallpaper_Click" Style="{StaticResource CompactButton}" />
                                 </StackPanel>
 
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
                                     <TextBlock Text="Fit" Style="{StaticResource FieldLabel}" />
-                                    <ComboBox x:Name="WallpaperStyleCombo" Width="160" SelectedIndex="0" />
+                                    <ComboBox x:Name="WallpaperStyleCombo" Width="180" SelectedIndex="0" />
                                 </StackPanel>
 
                                 <Button Content="Apply wallpaper" Click="ApplyWallpaper_Click"
-                                        HorizontalAlignment="Left" MinWidth="130" />
+                                        Style="{StaticResource PrimaryButton}"
+                                        HorizontalAlignment="Left" MinWidth="140" />
                             </StackPanel>
                         </GroupBox>
 
@@ -283,52 +333,67 @@
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Per-user, no administrator rights. Windows stores one colour across three unrelated registry keys plus a ladder of seven generated shades; WinChime writes all of them so the result matches what Settings would produce." />
 
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
                                     <TextBlock Text="Colour" Style="{StaticResource FieldLabel}" />
-                                    <Border x:Name="AccentPreview" Width="46" Height="26" BorderBrush="#999999"
-                                            BorderThickness="1" Margin="0,0,8,0" Background="#0078D7" />
-                                    <TextBox x:Name="AccentHexBox" Width="110" VerticalAlignment="Center"
+
+                                    <!--
+                                        Background here is DATA, not theme: it shows the colour
+                                        being edited and must never be repainted by a theme swap.
+                                        The border is chrome, and the code-behind rebinds it with
+                                        SetResourceReference so it does follow the theme.
+                                    -->
+                                    <Border x:Name="AccentPreview" Width="46" Height="30"
+                                            CornerRadius="{DynamicResource Radius.Control}"
+                                            BorderBrush="{DynamicResource Swatch.Border}"
+                                            BorderThickness="1" Margin="0,0,10,0" Background="#0078D7" />
+
+                                    <TextBox x:Name="AccentHexBox" Width="120" VerticalAlignment="Center"
                                              Text="#0078D7" TextChanged="AccentHex_TextChanged" />
                                     <TextBlock x:Name="AccentCurrentText" VerticalAlignment="Center"
-                                               Margin="12,0,0,0" Foreground="#666666" />
+                                               Margin="14,0,0,0" Foreground="{DynamicResource Text.Tertiary}" />
                                 </StackPanel>
 
                                 <TextBlock Text="Or pick one of the Windows swatches:" Style="{StaticResource Hint}" />
-                                <WrapPanel x:Name="AccentPresets" Margin="0,0,0,10" MaxWidth="620"
+                                <WrapPanel x:Name="AccentPresets" Margin="0,0,0,14" MaxWidth="640"
                                            HorizontalAlignment="Left" />
 
-                                <CheckBox x:Name="AccentPrevalenceCheck" Margin="0,0,0,8"
+                                <CheckBox x:Name="AccentPrevalenceCheck" Margin="0,0,0,12"
                                           Content="Show the accent colour on Start, the taskbar and title bars" />
 
                                 <WrapPanel>
-                                    <Button Content="Apply accent" Click="ApplyAccent_Click" MinWidth="120" />
+                                    <Button Content="Apply accent" Click="ApplyAccent_Click"
+                                            Style="{StaticResource PrimaryButton}" MinWidth="130" />
                                     <Button Content="Undo" Click="UndoAccent_Click" x:Name="AccentUndoButton"
-                                            IsEnabled="False" MinWidth="72" />
+                                            IsEnabled="False" Style="{StaticResource CompactButton}" MinWidth="72" />
                                 </WrapPanel>
 
-                                <TextBlock Style="{StaticResource Hint}" Margin="0,8,0,0"
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,0"
                                            Text="Window borders and most applications pick the change up immediately. Start and the taskbar cache the colour, so those may not change until you sign out and back in — that is Windows, not a failed write." />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0"
+                                           Text="WinChime tints itself with this colour too, picking a shade of it that keeps button labels readable whichever accent you choose." />
                             </StackPanel>
                         </GroupBox>
 
                         <GroupBox Header="Lock screen image">
                             <StackPanel>
-                                <TextBlock Style="{StaticResource Warning}"
-                                           Text="Read this before using: an unpackaged desktop app cannot use the clean WinRT lock screen API, so this uses the PersonalizationCSP mechanism that MDM uses. It works on all editions including Home, but while it is applied the lock screen section of Settings is greyed out. Clear removes it completely and restores normal Settings behaviour." />
+                                <Border Style="{StaticResource WarningCard}">
+                                    <TextBlock Style="{StaticResource Warning}" Margin="0"
+                                               Text="Read this before using: an unpackaged desktop app cannot use the clean WinRT lock screen API, so this uses the PersonalizationCSP mechanism that MDM uses. It works on all editions including Home, but while it is applied the lock screen section of Settings is greyed out. Clear removes it completely and restores normal Settings behaviour." />
+                                </Border>
 
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
                                     <TextBlock Text="Image" Style="{StaticResource FieldLabel}" />
-                                    <TextBox x:Name="LockScreenPathBox" Width="420" VerticalAlignment="Center"
-                                             IsReadOnly="True" Margin="0,0,6,0" />
-                                    <Button Content="Browse…" Click="BrowseLockScreen_Click" />
+                                    <TextBox x:Name="LockScreenPathBox" Width="400" VerticalAlignment="Center"
+                                             IsReadOnly="True" Margin="0,0,8,0" />
+                                    <Button Content="Browse…" Click="BrowseLockScreen_Click" Style="{StaticResource CompactButton}" />
                                 </StackPanel>
 
-                                <WrapPanel Margin="0,0,0,8">
-                                    <Button Content="Apply" Click="ApplyLockScreen_Click" />
-                                    <Button Content="Clear override" Click="ClearLockScreen_Click" MinWidth="120" />
+                                <WrapPanel Margin="0,0,0,10">
+                                    <Button Content="Apply" Click="ApplyLockScreen_Click" Style="{StaticResource PrimaryButton}" MinWidth="90" />
+                                    <Button Content="Clear override" Click="ClearLockScreen_Click" Style="{StaticResource CompactButton}" MinWidth="120" />
                                 </WrapPanel>
 
-                                <TextBlock x:Name="LockScreenStatusText" Style="{StaticResource Hint}" />
+                                <TextBlock x:Name="LockScreenStatusText" Style="{StaticResource Hint}" Margin="0" />
                             </StackPanel>
                         </GroupBox>
 
@@ -339,13 +404,16 @@
             <!-- ==================================================== SYSTEM & SAFETY -->
             <TabItem Header="System &amp; Safety">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="14" MaxWidth="900" HorizontalAlignment="Left">
+                    <StackPanel Margin="24,20,24,24" MaxWidth="880" HorizontalAlignment="Left">
 
                         <GroupBox Header="This PC">
                             <StackPanel>
-                                <TextBlock x:Name="SystemInfoText" FontFamily="Consolas" TextWrapping="Wrap" />
+                                <Border Style="{StaticResource InfoCard}">
+                                    <TextBlock x:Name="SystemInfoText" Style="{StaticResource MonoText}" />
+                                </Border>
                                 <Button Content="Refresh" Click="RefreshSystem_Click"
-                                        HorizontalAlignment="Left" Margin="0,10,0,0" />
+                                        Style="{StaticResource CompactButton}"
+                                        HorizontalAlignment="Left" Margin="0,4,0,0" />
                             </StackPanel>
                         </GroupBox>
 
@@ -354,7 +422,7 @@
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="A backup of every sound assignment is taken automatically before any bulk change (applying or importing a scheme). This is the primary undo path and does not depend on System Restore being enabled." />
 
-                                <ListView x:Name="BackupList" Height="150" Margin="0,4,0,8">
+                                <ListView x:Name="BackupList" MinHeight="180" Margin="0,4,0,12">
                                     <ListView.View>
                                         <GridView>
                                             <GridViewColumn Header="Created" Width="160"
@@ -370,10 +438,10 @@
                                 </ListView>
 
                                 <WrapPanel>
-                                    <Button Content="Restore sounds" Click="RestoreBackup_Click" MinWidth="120" />
-                                    <Button Content="Delete" Click="DeleteBackup_Click" />
-                                    <Button Content="Open folder" Click="OpenBackupFolder_Click" MinWidth="110" />
-                                    <Button Content="Back up now" Click="BackupNow_Click" MinWidth="110" />
+                                    <Button Content="Restore sounds" Click="RestoreBackup_Click" Style="{StaticResource CompactButton}" MinWidth="130" />
+                                    <Button Content="Delete" Click="DeleteBackup_Click" Style="{StaticResource CompactButton}" />
+                                    <Button Content="Open folder" Click="OpenBackupFolder_Click" Style="{StaticResource CompactButton}" MinWidth="110" />
+                                    <Button Content="Back up now" Click="BackupNow_Click" Style="{StaticResource CompactButton}" MinWidth="110" />
                                 </WrapPanel>
                             </StackPanel>
                         </GroupBox>
@@ -383,12 +451,13 @@
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="A restore point is a backstop, not the main undo path. It needs administrator rights, requires System Restore to be enabled for the system drive (off by default on many OEM installs), and Windows only creates one per 24 hours unless policy says otherwise." />
                                 <Button Content="Create restore point" Click="CreateRestorePoint_Click"
-                                        HorizontalAlignment="Left" MinWidth="150" />
+                                        Style="{StaticResource CompactButton}"
+                                        HorizontalAlignment="Left" MinWidth="160" />
                             </StackPanel>
                         </GroupBox>
 
                         <GroupBox Header="Scope">
-                            <TextBlock Style="{StaticResource Hint}"
+                            <TextBlock Style="{StaticResource Hint}" Margin="0"
                                        Text="WinChime does not modify boot files or the UEFI boot logo. Doing so would require the user to disable Secure Boot, and a cosmetic change is not worth weakening a machine's firmware trust chain. Everything this app changes is per-user or a single documented registry value, and every change is reversible from inside the app." />
                         </GroupBox>
 

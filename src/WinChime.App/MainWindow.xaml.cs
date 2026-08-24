@@ -93,7 +93,54 @@ public partial class MainWindow : Window
         ChimeDelaySlider.ValueChanged += (_, _) => UpdateChimeDelayText();
         UpdateChimeDelayText();
 
+        // The title bar is drawn by DWM, not WPF, so it needs asking separately. Track waits
+        // for the window handle, which does not exist yet at this point.
+        ThemeManager.Track(this);
+        ShowCurrentThemePreference();
+
         Loaded += (_, _) => InitialLoad();
+    }
+
+    // =================================================================== theme ==
+
+    /// <summary>
+    /// Guards the appearance switch while it is being set to match the stored preference.
+    /// Checked fires when the segment is set programmatically as well as when it is clicked.
+    /// </summary>
+    private bool _suppressThemeToggle;
+
+    private void ShowCurrentThemePreference()
+    {
+        _suppressThemeToggle = true;
+
+        var selected = ThemeManager.Preference switch
+        {
+            ThemePreference.Light => ThemeLightOption,
+            ThemePreference.Dark => ThemeDarkOption,
+            _ => ThemeSystemOption,
+        };
+
+        selected.IsChecked = true;
+
+        _suppressThemeToggle = false;
+    }
+
+    private void Theme_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_suppressThemeToggle) return;
+
+        if (sender is not RadioButton { Tag: string name }) return;
+        if (!Enum.TryParse<ThemePreference>(name, out var preference)) return;
+
+        var result = ThemeManager.SetPreference(preference);
+
+        // The theme is applied either way. Only the fact that it will not be remembered is
+        // worth telling the user about.
+        SetStatus(result.Success
+            ? preference == ThemePreference.System
+                ? $"Appearance follows Windows, currently {ThemeManager.Current.ToString().ToLowerInvariant()}."
+                : $"Appearance set to {name.ToLowerInvariant()}."
+            : $"Appearance changed, but it could not be saved: {result.Message}");
     }
 
     private void InitialLoad()
@@ -1104,15 +1151,24 @@ public partial class MainWindow : Window
         {
             var swatch = new Border
             {
-                Width = 26,
-                Height = 26,
-                Margin = new Thickness(0, 0, 4, 4),
-                BorderBrush = Brushes.Gray,
+                Width = 28,
+                Height = 28,
+                Margin = new Thickness(0, 0, 6, 6),
                 BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+
+                // The fill is data, not theme: it is the colour being offered, and a theme
+                // change must never repaint it.
                 Background = ToBrush(preset),
+
                 Cursor = System.Windows.Input.Cursors.Hand,
                 ToolTip = preset.Hex,
             };
+
+            // The border, by contrast, is chrome. Assigning a Brush here would capture a value
+            // and keep the old theme's grey after a live theme flip; SetResourceReference keeps
+            // it bound to the key, which is what DynamicResource does in XAML.
+            swatch.SetResourceReference(BorderBrushProperty, "Swatch.Border");
 
             // Selecting a swatch only fills the box. Applying stays an explicit action, so a
             // stray click cannot repaint the desktop.
@@ -1132,12 +1188,12 @@ public partial class MainWindow : Window
         if (AccentRgb.TryParse(AccentHexBox.Text, out var colour))
         {
             AccentPreview.Background = ToBrush(colour);
-            AccentPreview.BorderBrush = Brushes.Gray;
+            AccentPreview.SetResourceReference(BorderBrushProperty, "Swatch.Border");
         }
         else
         {
             // Flag it in the preview rather than popping a dialog on every keystroke.
-            AccentPreview.BorderBrush = Brushes.OrangeRed;
+            AccentPreview.SetResourceReference(BorderBrushProperty, "Input.BorderError");
         }
     }
 

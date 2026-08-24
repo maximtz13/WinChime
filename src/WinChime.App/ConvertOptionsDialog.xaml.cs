@@ -19,6 +19,9 @@ public partial class ConvertOptionsDialog : Window
     {
         InitializeComponent();
 
+        // Dialogs get their own DWM title bar, so each one has to be asked separately.
+        ThemeManager.Track(this);
+
         var name = Path.GetFileName(sourcePath);
 
         SourceText.Text = name;

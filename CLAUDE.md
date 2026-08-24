@@ -34,6 +34,21 @@ Detect it with `-v minimal` (not `-v quiet`, which hides the error) and match on
 anything in response to it. Never suggest disabling SAC: it is irreversible without
 reinstalling Windows.
 
+**To run the GUI while SAC is blocking, launch the DLL through the dotnet host:**
+
+```bash
+"/c/Program Files/dotnet/dotnet.exe" src/WinChime.App/bin/Release/net8.0-windows/WinChime.dll
+```
+
+SAC evaluates each binary separately, and `dotnet.exe` is signed by Microsoft. The apphost
+`WinChime.exe` is a freshly built unsigned binary and gets blocked for far longer than the
+managed DLL it loads — during one session the test assembly cleared while the exe stayed
+blocked through 20+ retries. This is the difference between waiting 20 minutes for a
+screenshot and taking it immediately.
+
+Note that **every rebuild resets the clock**, because SAC evaluates the new hash. Batch code
+edits and rebuild once before starting a retry loop, rather than rebuilding while one runs.
+
 ## Conventions
 
 - **Branch first, then commit.** One feature per PR, PR body explains the reasoning, merge
@@ -78,10 +93,47 @@ Each of these was derived experimentally and is documented in the relevant sourc
 - The accent lives in `AccentPalette[3]`, **not** `DWM\AccentColor`, which can be stale. The
   shade ladder is a multiplicative scale, verified to 1/255 against a live palette.
 - `SRSetRestorePoint` returns success with sequence 0 when Windows *skipped* the request.
+- The app theme is `AppsUseLightTheme`, **not** `SystemUsesLightTheme`. They are independent,
+  and a dark taskbar with light apps is a normal configuration Settings offers directly. A
+  *missing* value means light, not unknown.
+- The title bar is DWM's, not WPF's. `DWMWA_USE_IMMERSIVE_DARK_MODE` is attribute **20**, or
+  **19** on Windows 10 builds before 18985, and the two numbers mean different things on those
+  builds. `TitleBarTheme` tries 20 then falls back rather than guessing from a build number.
+  Setting it on an already-visible window often will not repaint; `SWP_FRAMECHANGED` forces it.
+
+## Theming
+
+Read `Theme/Controls.xaml` before touching the UI. Four things there are load-bearing:
+
+- **Everything is `DynamicResource`, never `StaticResource`,** for brushes. StaticResource
+  resolves once at load, so a theme swap appears to work for controls created afterwards and
+  not for the ones already on screen, which reads as random rather than as a bug.
+- **The three token files must define identical key sets.** A key in one and not another
+  resolves to nothing and paints *transparent* — silent at compile time and at run time.
+  `ThemeTokenTests` parses the XAML and fails the build instead.
+- **The `ListView` template must keep `GridView.GridViewScrollViewerStyleKey`.** An implicit
+  `ListView` style outranks the theme style WPF uses for a GridView-backed ListView, and the
+  column headers live in *that* ScrollViewer style. Drop the key and every header silently
+  disappears while the rows keep working.
+- **Code-behind must use `SetResourceReference`, not a `Brush` assignment.** Assigning a brush
+  captures a value and keeps the old theme's colour after a live flip. See `BuildAccentPresets`.
+
+`ThemeManager` replaces the token dictionary **in place**. Among merged dictionaries the last
+one holding a key wins, so inserting a second token dictionary in front of the one `App.xaml`
+declares leaves the original still winning and the swap silently does nothing.
+
+Popups (`ToolTip`, the ComboBox dropdown, `ContextMenu`) render outside the window's visual
+tree and inherit nothing from it. They must be styled from `Application.Resources` or they stay
+Aero2-light in dark mode.
+
+`AccentTheme` decides the accent shade. Do not "simplify" it to picking the higher-contrast
+foreground: measured across all 28 Windows swatches that picks black on 18 of them, including
+the classic `#0078D7` where the two options are within 4% and two near-identical reds end up
+opposite. The comments carry the measurements.
 
 ## Current state
 
-265 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
+322 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
 
 Never exercised: applying a *new* accent colour (write path is test-covered, but it repaints
 the desktop so it was left alone). Everything else has run at least once.

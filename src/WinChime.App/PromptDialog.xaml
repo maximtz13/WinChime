@@ -1,14 +1,15 @@
 <Window x:Class="WinChime.App.PromptDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="WinChime" SizeToContent="Height" Width="420"
+        Title="WinChime" SizeToContent="Height" Width="440"
+        Background="{DynamicResource Surface.Page}"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         ShowInTaskbar="False">
-    <StackPanel Margin="16">
-        <TextBlock x:Name="PromptText" TextWrapping="Wrap" Margin="0,0,0,10" />
-        <TextBox x:Name="InputBox" Margin="0,0,0,14" KeyDown="InputBox_KeyDown" />
+    <StackPanel Margin="24">
+        <TextBlock x:Name="PromptText" TextWrapping="Wrap" Margin="0,0,0,12" LineHeight="20" />
+        <TextBox x:Name="InputBox" Margin="0,0,0,20" KeyDown="InputBox_KeyDown" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="OK" IsDefault="True" Click="Ok_Click" />
+            <Button Content="OK" IsDefault="True" Click="Ok_Click" Style="{StaticResource PrimaryButton}" />
             <Button Content="Cancel" IsCancel="True" Margin="0" />
         </StackPanel>
     </StackPanel>

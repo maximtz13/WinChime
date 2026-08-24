@@ -19,6 +19,9 @@ public partial class PromptDialog : Window
         PromptText.Text = prompt;
         InputBox.Text = initialValue;
 
+        // Dialogs get their own DWM title bar, so each one has to be asked separately.
+        ThemeManager.Track(this);
+
         Loaded += (_, _) =>
         {
             InputBox.Focus();

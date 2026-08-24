@@ -61,6 +61,16 @@ public partial class App : Application
             args.Handled = true;
         };
 
+        // Only on the path that actually shows a window. The headless branches above return
+        // before this, so none of them pays to load theme dictionaries it cannot use.
+        ThemeManager.Initialise();
+
         new MainWindow().Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        ThemeManager.Shutdown();
+        base.OnExit(e);
     }
 }
