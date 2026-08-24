@@ -133,6 +133,37 @@ other people, so that is a real attack surface rather than a theoretical one —
 count and total uncompressed size are bounded against zip bombs. Missing or dangling
 entries are reported rather than silently assigned.
 
+### Cursors — `CursorSchemeService`
+
+`HKCU\Control Panel\Cursors` is structurally close to the sound system, so the scheme model,
+validation, snapshot and undo patterns all carried over. Unlike sounds it ships with content
+already: Windows includes a dozen cursor schemes.
+
+One difference drove most of the design. **A cursor scheme is a single comma-separated
+string where meaning comes entirely from position**, not a subkey per role. Get the order
+wrong and every cursor silently becomes the wrong one. The order in `CursorRoles.All` was
+derived by reading the shipped Windows Aero scheme and cross-referencing each entry against
+the live `HKCU` values — index 2 is `AppStarting` and index 3 is `Wait` because
+`aero_working.ani` and `aero_busy.ani` sit exactly there. A test pins it.
+
+Three related traps, each handled:
+
+- **The role list is an allow-list, not an enumeration of the key.** That key also holds
+  `CursorBaseSize`, `Scheme Source` and gesture settings; treating those as assignable
+  cursors would corrupt the mouse configuration.
+- **Shipped schemes have 19 entries, not 17.** The last two are a control panel icon path
+  and index — display metadata, ignored on read and omitted on write.
+- **Writing the registry changes nothing on screen.** `SPI_SETCURSORS` is what actually
+  swaps the pointer, and a failure there is reported rather than silently succeeding.
+
+`CursorFile` rejects an `.ico` renamed to `.cur`: same layout, type field 1 instead of 2, no
+hotspot. Windows accepts the assignment and silently keeps the system cursor — the same
+class of quiet failure as a non-PCM wav.
+
+Status reads **Assigned** rather than "Custom". Windows records no per-role default for
+cursors, unlike sounds, so there is no way to distinguish a file the user chose from one
+that came with the active scheme, and claiming otherwise would mislabel every stock cursor.
+
 ### The logon chime — `StartupSoundService` / `LogonChimeService`
 
 The on/off switch is one HKLM DWORD:
@@ -377,6 +408,7 @@ dotnet publish src/WinChime.App -c Release -r win-x64 --self-contained false -p:
 src/WinChime.Core/          class library, no UI, zero NuGet dependencies
   Model/                    SoundEvent, SystemInfo, BackupManifest, OperationResult…
   Cli/                      CliRunner (the command-line surface)
+  Cursors/                  CursorSchemeService, CursorFile, CursorRoles
   Sounds/                   SoundSchemeService, WaveFile, SoundPreview,
                             AudioTranscoder, SoundPackService
   Startup/                  StartupSoundService, LogonChimeService, SystemChimeResource
@@ -444,19 +476,29 @@ WinChime.exe --help
 | `--export-pack <file> [name]` | Write the current sounds to a `.winchimepack` |
 | `--apply-pack <file>` | Install and apply a pack |
 | `--backup [label]` | Snapshot the current assignments |
+| `--list-cursors [text]` | List cursor roles, optionally filtered |
+| `--list-cursor-schemes` | List cursor schemes, marking the active one |
+| `--get-cursor <Role>` | Show one cursor, with its format |
+| `--set-cursor <Role> <file>` | Assign a `.cur` or `.ani` |
+| `--system-cursor <Role>` | Let Windows draw that cursor |
+| `--apply-cursor-scheme <name>` | Switch to a cursor scheme |
 
 Exit codes are `0` success, `1` failed, `2` usage error, so failures are detectable in a
 script rather than needing output parsing.
 
 Two behaviours differ deliberately from the GUI:
 
-- **Non-PCM files are refused, not converted.** The app offers to convert an MP3; a script
+- **Unusable files are refused, not converted.** The app offers to convert an MP3; a script
   has nobody to ask, so the CLI fails with an explanation rather than assigning something
-  Windows would accept and then play silently.
-- **Mistyped event names suggest alternatives.** Event keys are not memorable, and a bare
-  "not found" makes a CLI hostile. Matching is on shared prefix rather than substring,
-  because a typo is usually a transposition — `SystemHnad` neither contains nor is contained
-  by `SystemHand`, but they share seven leading characters.
+  Windows would accept and then play silently. Cursors are refused outright — there is
+  nothing to convert.
+- **Mistyped names suggest alternatives.** Keys are not memorable and a bare "not found"
+  makes a CLI hostile. Matching uses **edit distance**, not substring or prefix. A prefix
+  heuristic handles transpositions (`SystemHnad`) but silently fails on a deletion: `Arow`
+  and `Arrow` share only two leading characters, so the most obvious typo of the most common
+  cursor produced no suggestion at all. With a few dozen candidates the real computation
+  costs nothing, and it is more precise — `Arow` now returns exactly `Arrow` rather than five
+  near-misses.
 
 ### Why a GUI executable can print at all
 
