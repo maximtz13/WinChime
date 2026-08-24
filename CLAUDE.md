@@ -100,10 +100,12 @@ Each of these was derived experimentally and is documented in the relevant sourc
   transparent. The shipped text I-beam (`beam_l.cur`) is entirely made of inverting pixels, so
   any code treating "AND 1" as transparent renders it invisible. `CursorImage` draws those
   black. Never assume a cursor is either alpha-blended or a simple mask.
-- **Cursor paths are stored *expanded* in the registry**, unlike sound paths. Reading
-  `Control Panel\Cursors` gives `C:\WINDOWS\cursors\aero_arrow.cur`, not `%SystemRoot%\...`.
-  Anything that has to travel between machines must collapse them back
-  (`WindowsShippedFile.Collapse`), or it works on the machine that made it and nowhere else.
+- **Paths in the registry may be stored expanded or unexpanded, and you cannot assume which.**
+  Cursors are consistently expanded. Sounds are *mixed*: on a stock Windows 11 install, 27 of
+  49 assigned sounds were stored as a literal `C:\WINDOWS\media\...` and 22 as `%SystemRoot%`,
+  all REG_SZ. Anything that has to travel between machines must call
+  `WindowsShippedFile.Collapse`, and no code should trust that a value arrived in either form.
+  Both pack services were written assuming otherwise and both were wrong.
 - The accent lives in `AccentPalette[3]`, **not** `DWM\AccentColor`, which can be stale. The
   shade ladder is a multiplicative scale, verified to 1/255 against a live palette.
 - `SRSetRestorePoint` returns success with sequence 0 when Windows *skipped* the request.
@@ -162,7 +164,7 @@ opposite. The comments carry the measurements.
 
 ## Current state
 
-373 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
+375 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
 
 Never exercised: applying a *new* accent colour (write path is test-covered, but it repaints
 the desktop so it was left alone). Everything else has run at least once.
@@ -177,7 +179,8 @@ cursor pack to sit alongside the sound one in `packs/` (that would be a drawing 
 The real bottleneck is not code — reputation with SmartScreen and SAC only builds through
 download volume.
 
-Known and deliberately not fixed: `SoundPackService` stores Windows sound paths exactly as
-read, which is fine today because sound assignments are already unexpanded in the registry,
-but it has the same latent portability hole cursors had. One call to
-`WindowsShippedFile.Collapse` would close it.
+Both pack services now collapse Windows paths on export. This was recorded here for a while as
+a latent, theoretical hole in `SoundPackService` on the grounds that sound assignments arrive
+unexpanded — which turned out to be false when the registry was finally counted rather than
+assumed. It was live, and it affected the majority of Windows sounds. When a note here says
+something is harmless because of how Windows stores a value, check it.

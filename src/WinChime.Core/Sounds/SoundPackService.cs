@@ -76,11 +76,19 @@ public static class SoundPackService
                         continue;
                     }
 
-                    // Present on every Windows install; keep the unexpanded form so it
-                    // resolves wherever the pack lands.
+                    // Present on every Windows install, so referenced rather than bundled.
+                    //
+                    // Collapsed rather than stored as read, which is the part that was wrong
+                    // before. The registry is not consistent about the form: counting the
+                    // assignments on a stock Windows 11 install found twenty-seven stored as a
+                    // literal C:\WINDOWS\media\... against twenty-two as %SystemRoot%, all of
+                    // them REG_SZ. Storing what was read therefore put a machine-specific path
+                    // into the pack for most Windows sounds, which works on the machine that
+                    // made it and breaks anywhere Windows is not on C: — the exact failure a
+                    // pack exists to prevent.
                     if (IsWindowsShippedSound(raw))
                     {
-                        packed.Assignments[pair.Key] = raw;
+                        packed.Assignments[pair.Key] = WindowsShippedFile.Collapse(raw);
                         systemSounds++;
                         continue;
                     }

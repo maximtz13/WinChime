@@ -64,6 +64,75 @@ public sealed class SoundPackServiceTests : IDisposable
         Assert.Equal(@"%SystemRoot%\media\Windows Notify.wav", manifest.Assignments[@".Default\SystemHand"]);
     }
 
+    /// <summary>
+    /// The registry is not consistent about which form it stores. Counting the assignments on
+    /// a stock Windows 11 install found twenty-seven held as a literal C:\WINDOWS\media\...
+    /// against twenty-two as %SystemRoot%, so most Windows sounds were going into packs as a
+    /// machine-specific path: fine on the machine that made the pack, broken anywhere Windows
+    /// is not on C:.
+    /// </summary>
+    [Fact]
+    public void Create_CollapsesAnExpandedWindowsPathBackToSystemRoot()
+    {
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var expanded = Path.Combine(windows, "media", "Windows Notify.wav");
+
+        var scheme = new SchemeExport
+        {
+            Name = "Test",
+            Assignments = { [@".Default\SystemHand"] = expanded },
+        };
+
+        Assert.True(SoundPackService.Create(PackPath(), scheme).Success);
+
+        using var archive = ZipFile.OpenRead(PackPath());
+
+        // Still referenced rather than bundled.
+        Assert.Empty(archive.Entries.Where(e => e.FullName.StartsWith(SoundPackService.MediaFolderName)));
+
+        var stored = ReadManifest(archive).Assignments[@".Default\SystemHand"];
+
+        Assert.StartsWith("%SystemRoot%", stored, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(@"media\Windows Notify.wav", stored, StringComparison.OrdinalIgnoreCase);
+
+        // And it still resolves back to where it came from.
+        Assert.Equal(
+            Path.GetFullPath(expanded),
+            Path.GetFullPath(Environment.ExpandEnvironmentVariables(stored)));
+    }
+
+    /// <summary>
+    /// A pack made from an expanded path and one made from the unexpanded form must be
+    /// interchangeable, since which one the registry happens to hold is not something the
+    /// person sharing the pack chose or can see.
+    /// </summary>
+    [Fact]
+    public void Create_StoresTheSameThingWhicheverFormTheRegistryHeld()
+    {
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+
+        string Pack(string value)
+        {
+            var path = _wav.PathFor($"form-{value.GetHashCode():X}{SoundPackService.PackExtension}");
+
+            var scheme = new SchemeExport
+            {
+                Name = "Test",
+                Assignments = { [@".Default\SystemHand"] = value },
+            };
+
+            Assert.True(SoundPackService.Create(path, scheme).Success);
+
+            using var archive = ZipFile.OpenRead(path);
+            return ReadManifest(archive).Assignments[@".Default\SystemHand"];
+        }
+
+        var fromExpanded = Pack(Path.Combine(windows, "media", "Windows Notify.wav"));
+        var fromUnexpanded = Pack(@"%SystemRoot%\media\Windows Notify.wav");
+
+        Assert.Equal(fromUnexpanded, fromExpanded, StringComparer.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Create_StoresASharedFileOnlyOnce()
     {

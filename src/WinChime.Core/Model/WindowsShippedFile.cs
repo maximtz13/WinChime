@@ -52,13 +52,16 @@ public static class WindowsShippedFile
     /// Rewrites a path inside the Windows folder back to its %SystemRoot% form, and leaves
     /// anything else exactly as it was.
     ///
-    /// Necessary because the registry is not consistent about which form it stores. Sound
-    /// assignments generally arrive already unexpanded, but the cursor values on a stock
-    /// Windows 11 install are fully expanded: reading Control Panel\Cursors on the machine
-    /// this was written on gives C:\WINDOWS\cursors\aero_arrow.cur, not the %SystemRoot%
-    /// version. Putting that literal path in a pack produces a file that works perfectly on
-    /// the machine that made it and breaks on any machine whose Windows is not on C:, which
-    /// is the exact failure a pack exists to avoid.
+    /// Necessary because the registry is not consistent about which form it stores, and the
+    /// inconsistency is not tidy enough to reason about. On one stock Windows 11 install every
+    /// cursor value under Control Panel\Cursors was fully expanded, while the sound
+    /// assignments were split: 27 of 49 held as a literal C:\WINDOWS\media\... and the other
+    /// 22 as %SystemRoot%, with no difference in value kind between them.
+    ///
+    /// Putting a literal path into a pack produces a file that works perfectly on the machine
+    /// that made it and breaks on any machine whose Windows is not on C:, which is the exact
+    /// failure a pack exists to avoid. So callers collapse on the way out and never assume a
+    /// value arrived in either form.
     /// </summary>
     public static string Collapse(string rawValue)
     {
