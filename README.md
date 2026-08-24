@@ -127,6 +127,32 @@ Two things a pack deliberately does **not** contain:
 - **Duplicates.** One file referenced by twelve events is stored once and referenced twelve
   times.
 
+#### The included pack
+
+[`packs/WinChime Chime.winchimepack`](packs) is a complete set covering notifications,
+errors, device connect and disconnect, logon and logoff, and emptying the recycle bin.
+Install it from the app with *Import…*, or:
+
+```bash
+WinChime.exe --apply-pack "packs\WinChime Chime.winchimepack"
+```
+
+Every sound is **synthesised**, not sourced, so the pack carries no third-party licensing
+and is reproducible from `tools/SoundPackGenerator`. They are additive synthesis — a few
+sine partials over an exponential decay, which is genuinely how a lot of UI sounds are made
+— built from one pentatonic set, so any two heard together still sound intentional.
+
+Two details that are audible if you get them wrong: partials must decay at *different* rates
+or the result sounds like an organ rather than something struck, and every sound needs a
+short attack ramp and end fade, because a non-zero sample at either edge of the file is a
+click. Committed sounds are verified to start and end at exactly zero.
+
+The pack is also checked by CI. Tests install the committed artefact, confirm every
+assignment resolves to a file that exists, and confirm every sound is playable PCM — the
+same standard the app enforces on your input. A pack whose manifest references missing media
+would install "successfully" and then be silent, which is precisely the failure this project
+exists to prevent.
+
 Installing validates before extracting. Entry paths are checked so a hostile entry named
 `../../evil.exe` cannot write outside the pack folder — packs are files people receive from
 other people, so that is a real attack surface rather than a theoretical one — and entry
@@ -419,6 +445,8 @@ src/WinChime.Core/          class library, no UI, zero NuGet dependencies
 src/WinChime.App/           WPF UI (net8.0-windows, asInvoker manifest)
   Assets/WinChime.ico       app icon, generated (see below)
 tools/IconGenerator/        regenerates the icon; not in the solution
+tools/SoundPackGenerator/   regenerates the sound pack; not in the solution
+packs/                      the included sound pack
 ```
 
 The icon is generated rather than hand-drawn, and the generator is committed so the `.ico`

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Deliberately NOT in WinChime.sln, like IconGenerator. It is a content tool, not part of
+    the product, and CI has no reason to build it. It lives here so the committed pack is
+    reproducible instead of an opaque blob of audio.
+
+    Run it with: dotnet run, pointing at tools/SoundPackGenerator
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WinChime.Core\WinChime.Core.csproj" />
+  </ItemGroup>
+
+</Project>
