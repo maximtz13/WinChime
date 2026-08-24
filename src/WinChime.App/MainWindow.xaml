@@ -115,6 +115,77 @@
                 </Grid>
             </TabItem>
 
+            <!-- =========================================================== CURSORS -->
+            <TabItem Header="Cursors">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="Scheme" Style="{StaticResource FieldLabel}" MinWidth="52" />
+                        <ComboBox x:Name="CursorSchemeCombo" Width="260" VerticalAlignment="Center"
+                                  DisplayMemberPath="Name" Margin="0,0,8,0" />
+                        <Button Content="Apply" Click="ApplyCursorScheme_Click" />
+                        <Button Content="Save as…" Click="SaveCursorScheme_Click" />
+                        <Button Content="Delete" Click="DeleteCursorScheme_Click" />
+                        <Separator Margin="8,0" />
+                        <Button Content="Undo" Click="UndoCursor_Click" x:Name="CursorUndoButton"
+                                IsEnabled="False" MinWidth="72" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="330" />
+                        </Grid.ColumnDefinitions>
+
+                        <ListView x:Name="CursorList" Grid.Column="0"
+                                  SelectionChanged="CursorList_SelectionChanged">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Cursor" Width="200"
+                                                    DisplayMemberBinding="{Binding DisplayName}" />
+                                    <GridViewColumn Header="Role" Width="120"
+                                                    DisplayMemberBinding="{Binding RoleKey}" />
+                                    <GridViewColumn Header="File" Width="220"
+                                                    DisplayMemberBinding="{Binding FileName}" />
+                                    <GridViewColumn Header="Status" Width="90"
+                                                    DisplayMemberBinding="{Binding StatusText}" />
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Selected cursor" Style="{StaticResource SectionHeader}" />
+                            <TextBlock x:Name="CursorSelectedTitle" TextWrapping="Wrap" FontWeight="SemiBold"
+                                       Margin="0,0,0,6" Text="Nothing selected" />
+                            <TextBlock x:Name="CursorSelectedPath" Style="{StaticResource Hint}" />
+
+                            <Border BorderBrush="#DDDDDD" BorderThickness="1" Padding="8" Margin="0,0,0,10">
+                                <TextBlock x:Name="CursorInfoText" TextWrapping="Wrap"
+                                           Text="Select a cursor to inspect its file." />
+                            </Border>
+
+                            <TextBlock x:Name="CursorWarnings" Style="{StaticResource Warning}" />
+
+                            <WrapPanel>
+                                <Button Content="Browse…" Click="BrowseCursor_Click" />
+                                <Button Content="Use system" Click="SystemCursor_Click" MinWidth="110"
+                                        ToolTip="Let Windows draw this cursor instead of using a file." />
+                            </WrapPanel>
+
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,14,0,0"
+                                       Text="Cursors apply immediately — the pointer changes as soon as you assign one, with no sign-out needed. Files must be .cur or .ani; an .ico renamed to .cur has no hotspot and Windows silently ignores it, so WinChime checks and tells you." />
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="A scheme stores all seventeen cursors as one positional list. Changing a single cursor leaves the scheme marked as modified, exactly as the Mouse control panel does." />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
             <!-- =========================================================== STARTUP -->
             <TabItem Header="Startup">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">

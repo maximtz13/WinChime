@@ -120,4 +120,13 @@ internal static class NativeMethods
         int dwNotifyFilter,
         SafeWaitHandle hEvent,
         [MarshalAs(UnmanagedType.Bool)] bool fAsynchronous);
+
+    // ---- user32: cursors -------------------------------------------------------
+    // Writing the registry values alone changes nothing on screen. SPI_SETCURSORS makes
+    // Windows reload them, which is what actually swaps the pointer.
+    public const uint SPI_SETCURSORS = 0x0057;
+
+    [DllImport("user32.dll", SetLastError = true, EntryPoint = "SystemParametersInfoW")]
+    public static extern bool SystemParametersInfoNoParam(
+        uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
 }
