@@ -1,4 +1,5 @@
 using System.Windows;
+using WinChime.Core.Cli;
 using WinChime.Core.Elevation;
 using WinChime.Core.Sounds;
 
@@ -26,6 +27,25 @@ public partial class App : Application
         if (e.Args.Length >= 2 && string.Equals(e.Args[0], ElevationHelper.ElevatedOpSwitch, StringComparison.OrdinalIgnoreCase))
         {
             Shutdown(ElevationHelper.RunElevatedChild(e.Args[1]));
+            return;
+        }
+
+        // Headless mode 3: command line. Borrows the parent terminal, because a WinExe has
+        // no console of its own and output would otherwise vanish silently.
+        if (CliRunner.IsCliInvocation(e.Args))
+        {
+            using var console = new ConsoleSession();
+
+            var exitCode = new CliRunner(Console.Out).Run(e.Args);
+
+            if (console.OwnsWindow)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Press Enter to close.");
+                Console.ReadLine();
+            }
+
+            Shutdown(exitCode);
             return;
         }
 

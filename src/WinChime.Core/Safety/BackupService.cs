@@ -17,8 +17,17 @@ namespace WinChime.Core.Safety;
 public sealed class BackupService
 {
     private readonly SoundSchemeService _sounds;
+    private readonly string _root;
 
-    public BackupService(SoundSchemeService sounds) => _sounds = sounds;
+    /// <param name="backupRoot">
+    /// Defaults to <see cref="BackupRoot"/>. Overridable so tests can write somewhere
+    /// disposable rather than filling the running user's real backup folder.
+    /// </param>
+    public BackupService(SoundSchemeService sounds, string? backupRoot = null)
+    {
+        _sounds = sounds;
+        _root = backupRoot ?? BackupRoot;
+    }
 
     public static string BackupRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -36,7 +45,7 @@ public sealed class BackupService
         {
             var info = SystemProbe.Capture();
             var id = $"{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..6]}";
-            var folder = Path.Combine(BackupRoot, id);
+            var folder = Path.Combine(_root, id);
             Directory.CreateDirectory(folder);
 
             var manifest = new BackupManifest
@@ -62,9 +71,9 @@ public sealed class BackupService
     public IReadOnlyList<BackupManifest> List()
     {
         var list = new List<BackupManifest>();
-        if (!Directory.Exists(BackupRoot)) return list;
+        if (!Directory.Exists(_root)) return list;
 
-        foreach (var folder in Directory.EnumerateDirectories(BackupRoot))
+        foreach (var folder in Directory.EnumerateDirectories(_root))
         {
             var manifestPath = Path.Combine(folder, "manifest.json");
             if (!File.Exists(manifestPath)) continue;
@@ -105,7 +114,7 @@ public sealed class BackupService
     {
         try
         {
-            var folder = Path.Combine(BackupRoot, manifest.Id);
+            var folder = Path.Combine(_root, manifest.Id);
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
             return OperationResult.Ok($"Deleted backup {manifest.Id}.");
         }
