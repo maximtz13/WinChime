@@ -534,8 +534,8 @@ Grab a build from [Releases](https://github.com/maximtz13/WinChime/releases):
 
 | File | Size | Requires |
 |------|------|----------|
-| `WinChime-<version>-win-x64.zip` | ~0.3 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) |
-| `WinChime-<version>-win-x64-self-contained.zip` | ~155 MB | nothing, fully standalone |
+| `WinChime-<version>-win-x64.zip` | ~0.5 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) |
+| `WinChime-<version>-win-x64-self-contained.zip` | ~65 MB | nothing, fully standalone |
 
 The binaries are unsigned. See [Windows may block it on first run](#windows-may-block-it-on-first-run)
 before you assume something is broken.
@@ -694,9 +694,10 @@ dotnet run --project tools/IconGenerator
 It emits nine sizes from 16 to 256. Frames below 256 are 32-bit BGRA BMPs, because BMP is
 what every shell back to XP understands. The 256 frame is PNG: that size only exists from
 Vista onward and everything able to read it also reads PNG, while as a BMP it alone is
-256 KB — the switch took the icon from 381 KB to 121 KB, which matters when the
-framework-dependent exe is only ~0.27 MB. (The legacy `System.Drawing.Icon` API cannot read
-PNG frames and falls back a size; WIC, which WPF and the shell use, reads all nine.)
+256 KB — the switch took the icon from 381 KB to 121 KB, which is a tenth of the ~1.3 MB
+single-file framework-dependent exe it is embedded in. (The legacy `System.Drawing.Icon` API
+cannot read PNG frames and falls back a size; WIC, which WPF and the shell use, reads all
+nine.)
 
 Below 24 px the mark drops from three arcs to two, because a third collapses into a smudge
 at that size. `IconGenerator` is deliberately excluded from `WinChime.sln` — it is a one-off

@@ -4,8 +4,8 @@ Two downloads, pick one:
 
 | File | Size | Requires |
 |------|------|----------|
-| `WinChime-{{VERSION}}-win-x64.zip` | ~0.3 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) |
-| `WinChime-{{VERSION}}-win-x64-self-contained.zip` | ~155 MB | nothing, fully standalone |
+| `WinChime-{{VERSION}}-win-x64.zip` | ~0.5 MB | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) |
+| `WinChime-{{VERSION}}-win-x64-self-contained.zip` | ~65 MB | nothing, fully standalone |
 
 ### If Windows blocks it
 
