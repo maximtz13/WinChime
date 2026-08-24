@@ -4,7 +4,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 One application for Windows sound and startup personalisation: system event sounds, sound
-schemes, the logon chime, wallpaper and the lock screen.
+schemes, cursors, the logon chime, wallpaper, the accent colour and the lock screen.
+
+It has a light and a dark theme, follows the Windows theme by default, and
+[tints itself with your accent colour](#the-apps-own-appearance--themeservice--accenttheme) —
+picking a shade of it that keeps its own labels readable whichever accent you have set.
 
 **Nothing here modifies a system file, a boot file, or the firmware trust chain.** Every
 change is either per-user or a single documented registry value, and every change is
@@ -13,23 +17,35 @@ why.
 
 ![The Sounds tab](docs/screenshots/01-sounds.png)
 
+The same window in the dark theme. The green is not a WinChime colour — it is this machine's
+Windows accent, which the app reads and tints itself with.
+
+![The Sounds tab in the dark theme](docs/screenshots/06-sounds-dark.png)
+
 <details>
-<summary><b>More screenshots</b> — Startup, Desktop &amp; Lock screen, System &amp; Safety</summary>
+<summary><b>More screenshots</b> — Cursors, Startup, Desktop &amp; Lock screen, System &amp; Safety</summary>
+
+### Cursors
+
+All seventeen cursor roles, with the scheme each came from and whether the file behind it
+actually exists.
+
+![The Cursors tab](docs/screenshots/02-cursors.png)
 
 ### Startup
 
 Preview the built-in Windows chime without enabling it, or install your own via a per-user
 logon task.
 
-![The Startup tab](docs/screenshots/02-startup.png)
+![The Startup tab](docs/screenshots/03-startup.png)
 
 ### Desktop and lock screen
 
-![The Desktop and Lock screen tab](docs/screenshots/03-desktop.png)
+![The Desktop and Lock screen tab](docs/screenshots/04-desktop.png)
 
 ### System and safety
 
-![The System and Safety tab](docs/screenshots/04-system.png)
+![The System and Safety tab](docs/screenshots/05-system.png)
 
 </details>
 
@@ -294,6 +310,46 @@ The easy one. `SystemParametersInfo(SPI_SETDESKWALLPAPER)` plus the
 `WallpaperStyle`/`TileWallpaper` pair in `HKCU\Control Panel\Desktop`. Per-user, no
 elevation, no policy, fully reversible from Settings.
 
+### The app's own appearance — `ThemeService` / `AccentTheme`
+
+Light, dark, or follow Windows, switched from the header and remembered in
+`HKCU\Software\WinChime`. Following Windows is live: change the system theme with WinChime
+open and it moves with it, via a `RegistryWatcher` on the Personalize key.
+
+Three things here were less obvious than they look.
+
+**It reads `AppsUseLightTheme`, not `SystemUsesLightTheme`.** Those are independent settings —
+a dark taskbar with light apps is a normal configuration that Settings offers directly — so an
+app reading the system value looks wrong on every machine set that way. A *missing* value means
+light, not unknown: on an install where nobody has opened the theme settings the value does not
+exist and Windows renders light.
+
+**The title bar is not WPF's to draw.** WPF owns the client area and DWM owns the caption, so a
+dark window with a default caption gets a bright white cap across the top.
+`DWMWA_USE_IMMERSIVE_DARK_MODE` fixes it, but the attribute number moved: 20 from Windows 10
+20H1, 19 on builds between 18362 and 19041, and on those the two numbers mean different things.
+`TitleBarTheme` tries 20 and falls back to 19 only when DWM rejects it, which avoids guessing
+from a build number.
+
+**The app tints itself with your accent** — fitting for an app whose job is editing that accent,
+but the accent is not a colour the app gets to pick. Windows' swatches run from `#FFB900` to
+`#4C4A48`, and every obvious rule fails somewhere on that list. A fixed white foreground fails
+on eleven of the twenty-eight (1.72:1 on the yellow). A fixed shade with a fixed foreground,
+which is what Windows itself does, bottoms out at 2.68:1. Taking whichever of black or white
+scores higher passes everywhere but picks black on eighteen, including the classic `#0078D7`
+where white is 4.50 and black is 4.67 — close enough that two near-identical reds end up with
+opposite treatments, which reads as a bug rather than a decision.
+
+So the foreground is fixed by convention, white on light and black on dark, and the *fill*
+moves: the accent is used exactly as chosen when it can carry that text, and otherwise walks
+the existing shade ladder away from the foreground until it can. Measured across all twenty-eight
+swatches that clears AA in both themes with no exceptions, keeps every fill at least 3:1 against
+its page, and never blows a saturated accent out to plain white. `AccentThemeTests` pins all
+three, and sweeps the colour cube for hand-typed values as well.
+
+High contrast bypasses the whole palette and defers to `SystemColors`. Someone running a high
+contrast scheme chose those colours deliberately, usually because they need them.
+
 ---
 
 ## Safety design
@@ -480,11 +536,15 @@ src/WinChime.Core/          class library, no UI, zero NuGet dependencies
                             AudioTranscoder, SoundPackService
   Startup/                  StartupSoundService, LogonChimeService, SystemChimeResource
   Personalization/          WallpaperService, LockScreenService,
-                            AccentColorService, AccentPalette
+                            AccentColorService, AccentPalette,
+                            ThemeService, AccentTheme, ColorContrast
   Safety/                   SystemProbe, BackupService, RestorePointService
   Elevation/                ElevationHelper  (the elevated-op protocol)
-  Interop/                  NativeMethods, ProcessRunner
+  Interop/                  NativeMethods, ProcessRunner, TitleBarTheme
 src/WinChime.App/           WPF UI (net8.0-windows, asInvoker manifest)
+  Theme/                    Tokens.Light / Tokens.Dark / Tokens.HighContrast
+                            (identical key sets), Geometry, Controls
+  ThemeManager.cs           swaps the token dictionary, tints from the accent
   Assets/WinChime.ico       app icon, generated (see below)
 tools/IconGenerator/        regenerates the icon; not in the solution
 tools/SoundPackGenerator/   regenerates the sound pack; not in the solution
@@ -611,6 +671,18 @@ so they can never be mistaken for user commands.
   reset. Use *Windows Default* for that.
 - **`ProductName` lies on Windows 11.** The registry value still reads "Windows 10 …" on
   every Win11 build; `SystemProbe` corrects it from the build number.
+- **A light app on a dark Windows keeps a dark title bar.** The caption is DWM's, and the
+  control it offers is one-directional: `DWMWA_USE_IMMERSIVE_DARK_MODE` set TRUE forces a dark
+  caption, but FALSE only restores the system default, which on Windows 11 already follows the
+  system theme. Verified on build 26200 — the call returns `S_OK` for both values and the
+  caption stays dark. So dark-on-light looks right and light-on-dark does not. Forcing it would
+  mean drawing the caption ourselves. The default *Follow Windows* setting never hits this.
+- **Message boxes and file pickers stay in the system theme.** `MessageBox`, `OpenFileDialog`
+  and `SaveFileDialog` are Win32 dialogs owned by the shell, not WPF windows this app can
+  style, so in the dark theme they appear as light dialogs. The file pickers at least follow
+  the Windows theme; `MessageBox` is a classic dialog and is light regardless, which is why it
+  looks the same in every Win32 app. Routing all 42 call sites through an in-app dialog would
+  fix it and is a change worth making on its own, not folded into a restyle.
 
 ## Distribution notes
 

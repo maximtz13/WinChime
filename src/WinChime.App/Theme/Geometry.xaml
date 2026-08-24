@@ -1,0 +1,81 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!--
+        Shape, size and type. None of this changes between light and dark, so it is merged once
+        and never swapped.
+
+        The dated signal in the old UI was never the greys. It was square corners, 22px controls
+        and 12pt text inherited from SystemFonts. Those three are what this file changes.
+    -->
+
+    <!-- ================================================================== radius -->
+    <!--
+        WPF controls have no CornerRadius property. Every value here only takes effect because
+        the matching ControlTemplate in Controls.xaml has a Border at its root.
+    -->
+
+    <CornerRadius x:Key="Radius.Small">3</CornerRadius>
+    <CornerRadius x:Key="Radius.Control">4</CornerRadius>
+    <CornerRadius x:Key="Radius.Card">8</CornerRadius>
+    <CornerRadius x:Key="Radius.Focus">6</CornerRadius>
+
+    <!-- =================================================================== sizes -->
+
+    <sys:Double x:Key="Size.ControlHeight">32</sys:Double>
+    <sys:Double x:Key="Size.ControlHeightCompact">28</sys:Double>
+    <sys:Double x:Key="Size.ButtonMinWidth">96</sys:Double>
+    <sys:Double x:Key="Size.RowHeight">30</sys:Double>
+    <sys:Double x:Key="Size.GridHeaderHeight">34</sys:Double>
+    <sys:Double x:Key="Size.NavItemHeight">38</sys:Double>
+    <!-- Wide enough for "Desktop and Lock screen" at 14 DIP SemiBold without clipping. -->
+    <sys:Double x:Key="Size.NavWidth">220</sys:Double>
+    <sys:Double x:Key="Size.ScrollBar">12</sys:Double>
+    <sys:Double x:Key="Size.SwatchSize">28</sys:Double>
+
+    <!--
+        Layout constants. These replace the nine hand tuned input widths and the two different
+        label gutters, and they have to be in place before the type ramp grows: 14 DIP text in a
+        control sized for 12 DIP text clips, and the detail pane at its old 330 wraps its button
+        row as soon as button padding grows.
+    -->
+    <sys:Double x:Key="Size.LabelColumn">96</sys:Double>
+    <sys:Double x:Key="Size.FieldMaxWidth">460</sys:Double>
+    <sys:Double x:Key="Size.DetailPaneWidth">360</sys:Double>
+    <sys:Double x:Key="Size.ContentMaxWidth">880</sys:Double>
+
+    <!-- ================================================================ spacing -->
+    <!-- A 4px grid, replacing the two dozen hand written margin values. -->
+
+    <Thickness x:Key="Space.PagePadding">24</Thickness>
+    <Thickness x:Key="Space.CardPadding">16</Thickness>
+    <Thickness x:Key="Space.InfoPadding">12</Thickness>
+    <Thickness x:Key="Space.ControlPadding">12,0</Thickness>
+    <Thickness x:Key="Space.ButtonGap">0,0,8,0</Thickness>
+    <Thickness x:Key="Space.CardGap">0,0,0,16</Thickness>
+    <Thickness x:Key="Space.RowGap">0,0,0,12</Thickness>
+    <Thickness x:Key="Space.FieldGap">0,0,12,0</Thickness>
+
+    <!-- ============================================================ typography -->
+    <!--
+        Segoe UI Variable is Windows 11 only, so Segoe UI is the load bearing fallback and has
+        to stay in the chain for Windows 10, Server and LTSC. Selawik covers the case where
+        neither ships.
+    -->
+    <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI, Selawik, Tahoma</FontFamily>
+    <FontFamily x:Key="Font.Display">Segoe UI Variable Display, Segoe UI Semibold, Segoe UI, Tahoma</FontFamily>
+
+    <!--
+        The system info block aligns its columns with padding, so the fallback chain has to stay
+        monospace the whole way down. A proportional fallback would silently shred it.
+    -->
+    <FontFamily x:Key="Font.Mono">Cascadia Mono, Consolas, Courier New</FontFamily>
+
+    <sys:Double x:Key="Font.Caption">12</sys:Double>
+    <sys:Double x:Key="Font.Body">14</sys:Double>
+    <sys:Double x:Key="Font.Subtitle">15</sys:Double>
+    <sys:Double x:Key="Font.Title">20</sys:Double>
+    <sys:Double x:Key="Font.Mono.Size">13</sys:Double>
+
+</ResourceDictionary>

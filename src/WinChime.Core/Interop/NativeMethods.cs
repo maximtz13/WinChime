@@ -150,4 +150,34 @@ internal static class NativeMethods
         uint flags,
         uint timeoutMilliseconds,
         out UIntPtr result);
+
+    // ---- dwmapi: dark title bar -------------------------------------------------
+    // A window painted dark with a light title bar looks broken, and WPF cannot style the
+    // non-client area at all. DWM can, through an attribute that went undocumented for years.
+    //
+    // The attribute number moved. Windows 10 20H1 (build 19041) settled on 20; the builds
+    // between 18362 and 19041 used 19, and on those the two numbers mean different things, so
+    // sending the wrong one silently does nothing or toggles an unrelated flag. Rather than
+    // gate on a build number, the caller tries 20 and falls back to 19 only when DWM rejects
+    // it, which is the same order of preference with none of the version guessing.
+    public const int DwmwaUseImmersiveDarkMode = 20;
+    public const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    // ---- user32: forcing the frame to repaint -----------------------------------
+    // Setting the dark-mode attribute on a window that is already on screen does not always
+    // repaint the title bar; on Windows 10 it frequently does not. Telling the window its
+    // frame changed forces the non-client area to be redrawn without moving or resizing it.
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_FRAMECHANGED = 0x0020;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowPos(
+        IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 }
