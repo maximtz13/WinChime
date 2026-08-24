@@ -304,11 +304,11 @@ public partial class MainWindow : Window
 
         if (!result.Success)
         {
-            MessageBox.Show(
+            MessageDialog.Show(
+                this,
                 result.Message,
                 result.NeedsElevation ? "Administrator rights needed" : "That did not work",
-                MessageBoxButton.OK,
-                result.NeedsElevation ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                result.NeedsElevation ? DialogIcon.Information : DialogIcon.Warning);
         }
     }
 
@@ -344,12 +344,12 @@ public partial class MainWindow : Window
     {
         if (warnings.Count == 0) return;
 
-        MessageBox.Show(
+        MessageDialog.Show(
+            this,
             string.Join(Environment.NewLine, warnings.Take(20))
             + (warnings.Count > 20 ? $"{Environment.NewLine}… and {warnings.Count - 20} more." : ""),
             title,
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            DialogIcon.Information);
     }
 
     // ================================================================== sounds ==
@@ -469,16 +469,16 @@ public partial class MainWindow : Window
         // Without Media Foundation there is nothing to offer but the old warning.
         if (!AudioTranscoder.IsAvailable)
         {
-            var proceed = MessageBox.Show(
+            var proceed = MessageDialog.Confirm(
+                this,
                 $"{Path.GetFileName(path)} is {described}, not uncompressed PCM, and audio conversion " +
                 "is unavailable on this Windows installation.\n\n" +
                 "Windows will accept the assignment but the event will play silently.\n\n" +
                 "Assign it anyway?",
                 "Cannot convert on this PC",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+                DialogIcon.Warning);
 
-            return proceed == MessageBoxResult.Yes ? path : null;
+            return proceed ? path : null;
         }
 
         var options = ConvertOptionsDialog.Ask(this, path, info, conversionRequired: true);
@@ -626,13 +626,13 @@ public partial class MainWindow : Window
         var (backupResult, _) = _backups.CreateSoundBackup($"Before applying scheme: {scheme.DisplayName}");
         if (!backupResult.Success)
         {
-            var proceed = MessageBox.Show(
+            var proceed = MessageDialog.Confirm(
+                this,
                 $"Could not create a backup first:\n\n{backupResult.Message}\n\nApply the scheme anyway?",
                 "Backup failed",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+                DialogIcon.Warning);
 
-            if (proceed != MessageBoxResult.Yes) return;
+            if (!proceed) return;
         }
 
         var before = _sounds.CaptureAssignments();
@@ -667,13 +667,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        var confirm = MessageBox.Show(
+        var confirm = MessageDialog.Confirm(
+            this,
             $"Delete the scheme \"{scheme.DisplayName}\"?\n\nCurrent sound assignments are not changed.",
             "Delete scheme",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+            DialogIcon.Question);
 
-        if (confirm != MessageBoxResult.Yes) return;
+        if (!confirm) return;
 
         Report(_sounds.DeleteScheme(scheme.Key));
         ReloadSchemes();
@@ -1047,7 +1047,9 @@ public partial class MainWindow : Window
         // to convert here, and assigning it would just silently do nothing.
         if (!info.IsValid)
         {
-            MessageBox.Show(info.Error, "Not a usable cursor file", MessageBoxButton.OK, MessageBoxImage.Warning);
+            // info.Error is nullable; MessageDialog substitutes a fallback rather than showing
+            // an empty box, which is what a Win32 message box did with a null string.
+            MessageDialog.Show(this, info.Error, "Not a usable cursor file", DialogIcon.Warning);
             return;
         }
 
@@ -1099,13 +1101,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        var confirm = MessageBox.Show(
+        var confirm = MessageDialog.Confirm(
+            this,
             $"Delete the cursor scheme \"{scheme.Name}\"?\n\nThe cursors currently in use are not changed.",
             "Delete cursor scheme",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+            DialogIcon.Question);
 
-        if (confirm != MessageBoxResult.Yes) return;
+        if (!confirm) return;
 
         Report(_cursors.DeleteScheme(scheme.Name));
         ReloadCursorSchemes();
@@ -1330,14 +1332,17 @@ public partial class MainWindow : Window
 
         if (result.Success && _startupSound.IsBuiltInChimeEnabled())
         {
-            var turnOff = MessageBox.Show(
+            // The dialog is fully closed before this returns, which matters here: the
+            // affirmative path spawns an elevated child, and a UAC prompt raised while a modal
+            // window is still up appears behind it.
+            var turnOff = MessageDialog.Confirm(
+                this,
                 "The built-in Windows startup sound is still enabled, so you will hear both.\n\n" +
                 "Turn the built-in one off now?",
                 "Two chimes will play",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
+                DialogIcon.Question);
 
-            if (turnOff == MessageBoxResult.Yes)
+            if (turnOff)
             {
                 Report(ElevationHelper.Execute(new ElevatedRequest
                 {
@@ -1451,11 +1456,11 @@ public partial class MainWindow : Window
     {
         if (!AccentRgb.TryParse(AccentHexBox.Text, out var colour))
         {
-            MessageBox.Show(
+            MessageDialog.Show(
+                this,
                 "Enter a colour as #RRGGBB, for example #0078D7, or click one of the swatches.",
                 "That is not a colour",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                DialogIcon.Warning);
 
             return;
         }
@@ -1511,14 +1516,19 @@ public partial class MainWindow : Window
 
     private void ApplyLockScreen_Click(object sender, RoutedEventArgs e)
     {
-        var confirm = MessageBox.Show(
+        // The one prompt in the app whose buttons are OK and Cancel rather than Yes and No.
+        // Kept that way deliberately: it is a "proceed with this" acknowledgement rather than
+        // a question, and rewording it to Yes/No would change what is being asked.
+        var confirm = MessageDialog.Confirm(
+            this,
             "While this override is applied, the lock screen section of Settings will be greyed out.\n\n" +
             "Clear override removes it completely and restores normal behaviour.\n\nContinue?",
             "Lock screen override",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Information);
+            DialogIcon.Information,
+            affirmative: "OK",
+            negative: "Cancel");
 
-        if (confirm != MessageBoxResult.OK) return;
+        if (!confirm) return;
 
         Report(_lockScreen.Apply(LockScreenPathBox.Text));
         RefreshDesktopTab();
@@ -1576,14 +1586,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        var confirm = MessageBox.Show(
+        var confirm = MessageDialog.Confirm(
+            this,
             $"Restore {manifest.SoundAssignments.Count} sound assignment(s) from {manifest.CreatedLocalText}?\n\n" +
             "Your current assignments will be overwritten.",
             "Restore backup",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+            DialogIcon.Question);
 
-        if (confirm != MessageBoxResult.Yes) return;
+        if (!confirm) return;
 
         var before = _sounds.CaptureAssignments();
 
@@ -1608,13 +1618,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        var confirm = MessageBox.Show(
+        // The only irreversible delete in the app, and the only one that leaves no undo behind
+        // it. A message box always focuses the affirmative, so Enter used to confirm this
+        // outright; here the declining button holds focus instead.
+        var confirm = MessageDialog.Confirm(
+            this,
             $"Permanently delete the backup from {manifest.CreatedLocalText}?",
             "Delete backup",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+            DialogIcon.Warning,
+            affirmative: "Delete",
+            negative: "Keep it",
+            defaultIsNegative: true);
 
-        if (confirm != MessageBoxResult.Yes) return;
+        if (!confirm) return;
 
         Report(_backups.Delete(manifest));
         RefreshBackups();
