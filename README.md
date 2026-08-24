@@ -247,6 +247,50 @@ the reader to take the size from its frames. Once the cursor has actually been r
 details panel reports *that* size — the one Windows will really draw, at this machine's
 pointer size.
 
+### Dialogs — `MessageDialog`
+
+A Win32 message box cannot be themed. It is drawn by the shell, it is a classic dialog rather
+than a modern one, and it stays light however the app and Windows are set — so in the dark
+theme every error and every confirmation arrived as a white rectangle. All of them are now
+in-app windows instead.
+
+The interesting part was not the appearance. `MessageBox` does a surprising amount for free,
+and every piece of it is invisible until it is missing:
+
+- **Escape dismisses.** A message box lets Escape close anything with a cancel-equivalent
+  answer, which for an OK-only box is OK itself. A plain `Window` ignores Escape and looks
+  stuck.
+- **Enter activates the default button, which holds focus on open.** Without an explicit focus
+  call after `Loaded`, nothing has focus and neither Enter nor Space does anything at all.
+- **The system sound tied to the icon plays.** Dropping it would be a peculiar regression in
+  an app whose whole subject is system sounds.
+- **Ctrl+C copies the text.** It is how people capture an error to report it, and it matters
+  most for the messages carrying a real Windows failure string.
+
+Two traps were avoided rather than discovered. The message goes in a `TextBlock`, never a
+`Label` or a bare string in a `ContentControl`: anything deriving from `AccessText` runs the
+access-key parser over the text, which eats underscores and turns the next character into a
+mnemonic — so `My_Scheme.wav` would silently render as `MyScheme.wav`, and these messages are
+full of scheme names and file paths. And wrapping is `Wrap` rather than `WrapWithOverflow`, so
+a long unbroken path breaks mid-token instead of pushing the window wider than the screen.
+
+One behaviour is deliberately *not* copied. A Yes/No message box refuses to close on Escape, on
+the grounds that a two-way question has no third answer. Here Escape declines, which is safe
+because every caller treats anything other than the affirmative as a decline.
+
+One is deliberately better. A message box always focuses the affirmative, so Enter confirmed
+*Delete backup* — the only irreversible action in the app. That prompt now reads **Delete /
+Keep it** with the safe answer focused, and the accent fill follows the focus rather than the
+destructive button, so the highlighted button and the one Enter triggers are the same.
+
+**The crash handler keeps its message box.** It is registered before the main window exists and
+before the theme is applied, so an exception from theme loading or from the `MainWindow`
+constructor arrives with no window to own a dialog and possibly no resources to style one. A
+message box needs no owner, no visual tree and no resource lookup; it cannot become the app's
+last window and shut the process down when dismissed; and it pumps no dispatcher loop of its
+own, so a visual tree that throws on every render cannot re-enter the handler through the error
+dialog. Every property that makes it unthemeable is what makes it correct there.
+
 ### Cursor packs — `CursorPackService`
 
 A cursor scheme travels worse than a sound scheme. Sounds at least have `%SystemRoot%`
@@ -768,12 +812,11 @@ so they can never be mistaken for user commands.
   system theme. Verified on build 26200 — the call returns `S_OK` for both values and the
   caption stays dark. So dark-on-light looks right and light-on-dark does not. Forcing it would
   mean drawing the caption ourselves. The default *Follow Windows* setting never hits this.
-- **Message boxes and file pickers stay in the system theme.** `MessageBox`, `OpenFileDialog`
-  and `SaveFileDialog` are Win32 dialogs owned by the shell, not WPF windows this app can
-  style, so in the dark theme they appear as light dialogs. The file pickers at least follow
-  the Windows theme; `MessageBox` is a classic dialog and is light regardless, which is why it
-  looks the same in every Win32 app. Routing all 42 call sites through an in-app dialog would
-  fix it and is a change worth making on its own, not folded into a restyle.
+- **File pickers stay in the system theme.** `OpenFileDialog` and `SaveFileDialog` are shell
+  dialogs, not WPF windows this app can style. They follow the *Windows* theme, so they only
+  look out of place when the app has been set to a theme the system is not using.
+- **The crash dialog is still a Win32 message box**, and deliberately — see
+  [Dialogs](#dialogs--messagedialog). Every other one is now in-app.
 
 ## Distribution notes
 

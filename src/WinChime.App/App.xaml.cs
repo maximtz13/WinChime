@@ -50,6 +50,23 @@ public partial class App : Application
         }
 
         // A personalisation tool is not worth a crash dialog; surface and carry on.
+        //
+        // The one place still using a Win32 message box, and deliberately. Every other dialog
+        // in the app is now MessageDialog, but this handler is the last resort and each thing
+        // that makes MessageBox unthemeable is also what makes it safe here:
+        //
+        // - It needs no owner. This is registered before the main window is created, so an
+        //   exception from ThemeManager.Initialise or from the MainWindow constructor arrives
+        //   with no window to own a dialog.
+        // - It needs no resources. If the fault were a missing theme key, a WPF dialog would
+        //   throw while parsing the very error it was opened to report.
+        // - It is not a Window, so it cannot become the app's last window and shut the process
+        //   down when dismissed, and it never joins Application.Windows.
+        // - It pumps no dispatcher loop of its own, so a visual tree that throws on every
+        //   render cannot re-enter this handler through the error dialog.
+        //
+        // The cost is that a crash message appears in the system theme rather than the app's.
+        // That is the correct trade for the one dialog that has to work when nothing else does.
         DispatcherUnhandledException += (_, args) =>
         {
             MessageBox.Show(

@@ -142,6 +142,19 @@ Popups (`ToolTip`, the ComboBox dropdown, `ContextMenu`) render outside the wind
 tree and inherit nothing from it. They must be styled from `Application.Resources` or they stay
 Aero2-light in dark mode.
 
+**Use `MessageDialog`, not `MessageBox`.** The one exception is the
+`DispatcherUnhandledException` handler in `App.xaml.cs`, which must stay a message box: it can
+fire before any window exists and before the theme is applied, and a WPF dialog there needs an
+owner, resources and a dispatcher loop it may not have. The comment on it explains why; do not
+"finish the job" by converting it.
+
+Two traps `MessageDialog` already handles, worth knowing if you write another dialog. Message
+text belongs in a `TextBlock` — anything deriving from `AccessText` (a `Label`, or a string set
+as `Content`) runs the access-key parser, which eats underscores, so `My_Scheme.wav` renders as
+`MyScheme.wav`. And `Style = null` does not fall back to the implicit style; it means *no*
+style, and the control drops to raw WPF chrome. Name the implicit style with
+`FindResource(typeof(Button))` instead.
+
 **A type shown in a `ListView` row needs a `ToString()` override.** A row has no automation
 name of its own, so UI Automation falls back to `ToString()` — and the default is the type
 name, which means a screen reader reads "WinChime.Core.Model.SoundEvent" seventy-two times.

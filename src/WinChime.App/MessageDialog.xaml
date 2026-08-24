@@ -1,0 +1,65 @@
+<Window x:Class="WinChime.App.MessageDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WinChime" SizeToContent="Height" Width="460"
+        Background="{DynamicResource Surface.Page}"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        ShowInTaskbar="False">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Drawn rather than a glyph font, so it cannot fall back to a missing character. -->
+        <Grid x:Name="IconArea" Grid.Row="0" Grid.Column="0"
+              Width="28" Height="28" Margin="0,2,16,0" VerticalAlignment="Top">
+
+            <Ellipse x:Name="IconDisc" Fill="{DynamicResource Accent.Fill}" />
+
+            <Path x:Name="IconTriangle"
+                  Data="M 14,0 L 28,26 L 0,26 Z"
+                  Fill="{DynamicResource Status.Warning}"
+                  Visibility="Collapsed" />
+
+            <TextBlock x:Name="IconGlyph" Text="i"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontFamily="{DynamicResource Font.Display}"
+                       FontSize="17" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Accent.Text}" />
+        </Grid>
+
+        <!--
+            A TextBlock, deliberately. Anything deriving from AccessText (Label, or a string in
+            a ContentControl) runs the access key parser over the text, which eats underscores
+            and turns the next character into a mnemonic. These messages carry scheme names and
+            full file paths, so "My_Scheme.wav" would silently render as "MyScheme.wav".
+
+            TextWrapping is Wrap rather than WrapWithOverflow so a long unbroken path breaks
+            mid token instead of pushing the window wider than the screen.
+        -->
+        <ScrollViewer Grid.Row="0" Grid.Column="1"
+                      MaxHeight="340" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <TextBlock x:Name="MessageText" TextWrapping="Wrap" LineHeight="20"
+                       Foreground="{DynamicResource Text.Primary}" />
+        </ScrollViewer>
+
+        <StackPanel x:Name="ButtonRow" Grid.Row="1" Grid.Column="1"
+                    Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0"
+                    KeyboardNavigation.TabNavigation="Cycle"
+                    KeyboardNavigation.DirectionalNavigation="Cycle">
+
+            <Button x:Name="AffirmativeButton" Content="OK" Click="Affirmative_Click"
+                    Style="{StaticResource PrimaryButton}" />
+
+            <Button x:Name="NegativeButton" Content="Cancel" Click="Negative_Click"
+                    Margin="0" Visibility="Collapsed" />
+        </StackPanel>
+    </Grid>
+</Window>

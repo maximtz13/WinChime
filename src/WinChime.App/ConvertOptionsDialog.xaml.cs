@@ -67,11 +67,14 @@ public partial class ConvertOptionsDialog : Window
             if (!double.TryParse(TrimSecondsBox.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var seconds)
                 || seconds <= 0)
             {
-                MessageBox.Show(
+                // Owner is this dialog, not the main window. This one is nested inside a modal
+                // window, and owning it to the disabled main window instead would let the main
+                // window come back to life behind a dialog that is still up.
+                MessageDialog.Show(
+                    this,
                     "Enter a trim length greater than zero, in seconds.",
                     "Trim length",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                    DialogIcon.Warning);
 
                 TrimSecondsBox.Focus();
                 TrimSecondsBox.SelectAll();
