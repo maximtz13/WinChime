@@ -1,7 +1,4 @@
-
-| `--get-accent` | Show the accent colour and its shade ladder |
-| `--set-accent <#RRGGBB> [on|off]` | Set it; on/off shows it on Start and title bars |
-| `--list-accent-presets` | List the Windows swatches |# WinChime
+# WinChime
 
 [![CI](https://github.com/maximtz13/WinChime/actions/workflows/ci.yml/badge.svg)](https://github.com/maximtz13/WinChime/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -555,6 +552,9 @@ WinChime.exe --help
 | `--set-cursor <Role> <file>` | Assign a `.cur` or `.ani` |
 | `--system-cursor <Role>` | Let Windows draw that cursor |
 | `--apply-cursor-scheme <name>` | Switch to a cursor scheme |
+| `--get-accent` | Show the accent colour and its shade ladder |
+| `--set-accent <#RRGGBB> [on\|off]` | Set it; on/off shows it on Start and title bars |
+| `--list-accent-presets` | List the Windows swatches |
 
 Exit codes are `0` success, `1` failed, `2` usage error, so failures are detectable in a
 script rather than needing output parsing.
