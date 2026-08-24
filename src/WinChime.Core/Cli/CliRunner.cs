@@ -1,3 +1,4 @@
+using WinChime.Core.Cursors;
 using WinChime.Core.Model;
 using WinChime.Core.Safety;
 using WinChime.Core.Sounds;
@@ -23,12 +24,22 @@ public sealed class CliRunner
     private readonly TextWriter _out;
     private readonly SoundSchemeService _sounds;
     private readonly BackupService _backups;
+    private readonly CursorSchemeService _cursors;
 
-    public CliRunner(TextWriter output, string? registryRoot = null, string? backupRoot = null)
+    /// <param name="cursors">
+    /// Injected whole rather than as a path, because a cursor service needs three registry
+    /// locations and threading all of them through here would be noise.
+    /// </param>
+    public CliRunner(
+        TextWriter output,
+        string? registryRoot = null,
+        string? backupRoot = null,
+        CursorSchemeService? cursors = null)
     {
         _out = output;
         _sounds = new SoundSchemeService(registryRoot ?? SoundSchemeService.DefaultRegistryRoot);
         _backups = new BackupService(_sounds, backupRoot);
+        _cursors = cursors ?? new CursorSchemeService();
     }
 
     /// <summary>True when these arguments are meant for the CLI rather than the GUI.</summary>
@@ -66,6 +77,12 @@ public sealed class CliRunner
                 "--export-pack" => ExportPack(rest),
                 "--apply-pack" => ApplyPack(rest),
                 "--backup" => Backup(rest),
+                "--list-cursors" => ListCursors(rest),
+                "--get-cursor" => GetCursor(rest),
+                "--set-cursor" => SetCursor(rest),
+                "--system-cursor" => SetCursor(rest.Count == 1 ? new List<string> { rest[0], "" } : rest),
+                "--list-cursor-schemes" => ListCursorSchemes(),
+                "--apply-cursor-scheme" => ApplyCursorScheme(rest),
                 _ => Fail($"Unknown command: {args[0]}. Try --help.", ExitUsage),
             };
         }
@@ -99,12 +116,23 @@ public sealed class CliRunner
         _out.WriteLine("  --export-pack <file> [name]               write the current sounds to a pack");
         _out.WriteLine("  --apply-pack <file>                       install and apply a pack");
         _out.WriteLine();
+        _out.WriteLine("Cursors");
+        _out.WriteLine("  --list-cursors [text]                     list cursor roles, optionally filtered");
+        _out.WriteLine("  --list-cursor-schemes                     list cursor schemes");
+        _out.WriteLine("  --get-cursor <Role>                       show one cursor");
+        _out.WriteLine("  --set-cursor <Role> <file.cur|.ani>       assign a cursor");
+        _out.WriteLine("  --system-cursor <Role>                    let Windows draw it");
+        _out.WriteLine("  --apply-cursor-scheme <name>              switch to a cursor scheme");
+        _out.WriteLine();
         _out.WriteLine("Safety");
         _out.WriteLine("  --backup [label]                          snapshot the current assignments");
         _out.WriteLine();
         _out.WriteLine("Event names are AppKey\\EventKey, for example .Default\\SystemHand.");
         _out.WriteLine("Run --list to see them. Sounds must be uncompressed PCM .wav; the");
         _out.WriteLine("application converts other formats, the CLI does not.");
+        _out.WriteLine();
+        _out.WriteLine("Cursor roles are single names such as Arrow or Wait. Run --list-cursors");
+        _out.WriteLine("to see them. Cursors must be .cur or .ani.");
 
         return ExitOk;
     }
@@ -293,6 +321,139 @@ public sealed class CliRunner
         return result.Success ? ExitOk : ExitFailed;
     }
 
+    // ------------------------------------------------------------------- cursors --
+
+    private int ListCursors(IReadOnlyList<string> args)
+    {
+        var filter = args.Count > 0 ? args[0] : null;
+
+        var cursors = _cursors.LoadCursors()
+            .Where(c => filter is null
+                        || c.RoleKey.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                        || c.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (cursors.Count == 0)
+        {
+            _out.WriteLine(filter is null ? "No cursors found." : $"No cursors match \"{filter}\".");
+            return ExitOk;
+        }
+
+        foreach (var c in cursors)
+        {
+            var flag = c.IsBroken ? "!" : c.IsSystemDrawn ? " " : "*";
+            _out.WriteLine($"{flag} {c.RoleKey,-14} {c.DisplayName,-24} {c.FileName}");
+        }
+
+        _out.WriteLine();
+        _out.WriteLine($"{cursors.Count} cursor(s).  * = file assigned, ! = file missing, blank = drawn by Windows");
+
+        return ExitOk;
+    }
+
+    private int ListCursorSchemes()
+    {
+        var active = _cursors.GetActiveSchemeName();
+        var schemes = _cursors.ListSchemes();
+
+        if (schemes.Count == 0)
+        {
+            _out.WriteLine("No cursor schemes found.");
+            return ExitOk;
+        }
+
+        foreach (var scheme in schemes)
+        {
+            var marker = scheme.Name.Equals(active, StringComparison.OrdinalIgnoreCase) ? "*" : " ";
+            _out.WriteLine($"{marker} {scheme.Name,-40} {(scheme.IsSystemScheme ? "(Windows)" : "(yours)")}");
+        }
+
+        _out.WriteLine();
+        _out.WriteLine($"Active: {active}");
+
+        return ExitOk;
+    }
+
+    private int GetCursor(IReadOnlyList<string> args)
+    {
+        if (args.Count < 1) return Fail("Usage: --get-cursor <Role>", ExitUsage);
+        if (!TryFindCursor(args[0], out var cursor, out var error)) return Fail(error, ExitFailed);
+
+        _out.WriteLine($"Role   : {cursor!.RoleKey}");
+        _out.WriteLine($"Name   : {cursor.DisplayName}");
+        _out.WriteLine($"File   : {cursor.CurrentPath ?? "(drawn by Windows)"}");
+        _out.WriteLine($"Status : {cursor.StatusText}");
+
+        if (!cursor.IsSystemDrawn && !cursor.IsBroken)
+        {
+            var info = CursorFile.Inspect(cursor.CurrentPath!);
+            _out.WriteLine($"Format : {info.Summary}");
+
+            foreach (var warning in info.Warnings) _out.WriteLine($"Warning: {warning}");
+        }
+
+        return ExitOk;
+    }
+
+    private int SetCursor(IReadOnlyList<string> args)
+    {
+        if (args.Count < 2) return Fail("Usage: --set-cursor <Role> <file.cur|.ani>", ExitUsage);
+        if (!TryFindCursor(args[0], out var cursor, out var error)) return Fail(error, ExitFailed);
+
+        var path = args[1];
+
+        if (!string.IsNullOrEmpty(path))
+        {
+            if (!File.Exists(path)) return Fail($"File not found: {path}", ExitFailed);
+
+            // Nothing to convert here, unlike audio, so an unusable file is simply refused.
+            var info = CursorFile.Inspect(path);
+            if (!info.IsValid) return Fail(info.Error ?? "Unreadable cursor file.", ExitFailed);
+
+            path = Path.GetFullPath(path);
+        }
+
+        return Report(_cursors.SetCursor(cursor!.RoleKey, path));
+    }
+
+    private int ApplyCursorScheme(IReadOnlyList<string> args)
+    {
+        if (args.Count < 1) return Fail("Usage: --apply-cursor-scheme <name>", ExitUsage);
+
+        var requested = args[0];
+        var scheme = _cursors.ListSchemes().FirstOrDefault(s =>
+            s.Name.Equals(requested, StringComparison.OrdinalIgnoreCase));
+
+        if (scheme is null)
+        {
+            return Fail(
+                $"No cursor scheme named \"{requested}\". Run --list-cursor-schemes to see what is installed.",
+                ExitFailed);
+        }
+
+        return Report(_cursors.ApplyScheme(scheme.Name));
+    }
+
+    /// <summary>
+    /// Resolves a cursor role, suggesting near matches on a miss. Same reasoning as sound
+    /// events: the keys are not obvious, so a bare not-found is unhelpful.
+    /// </summary>
+    private bool TryFindCursor(string roleName, out CursorEntry? cursor, out string error)
+    {
+        var cursors = _cursors.LoadCursors();
+
+        cursor = cursors.FirstOrDefault(c => c.RoleKey.Equals(roleName, StringComparison.OrdinalIgnoreCase));
+        if (cursor is not null) { error = string.Empty; return true; }
+
+        var suggestions = NearestMatches(cursors.Select(c => c.RoleKey), roleName);
+
+        error = suggestions.Count > 0
+            ? $"No cursor role named {roleName}. Did you mean: {string.Join(", ", suggestions)}"
+            : $"No cursor role named {roleName}. Run --list-cursors to see the available roles.";
+
+        return false;
+    }
+
     // ------------------------------------------------------------------- helpers --
 
     /// <summary>
@@ -319,22 +480,13 @@ public sealed class CliRunner
 
         if (soundEvent is not null) return true;
 
-        // Contains alone is useless for the common case, which is a typo rather than a
-        // partial name: "SystemHnad" does not contain, and is not contained by, "SystemHand".
-        // Matching on a shared prefix catches transpositions and wrong endings, which is most
-        // real mistakes, without implementing edit distance for a help message.
+        // Contains alone is useless here: the common case is a typo rather than a partial
+        // name, and "SystemHnad" neither contains nor is contained by "SystemHand".
         var wanted = split[1];
-        var prefix = wanted.Length >= 4 ? wanted[..4] : wanted;
 
-        var suggestions = events
-            .Where(e => e.EventKey.Contains(wanted, StringComparison.OrdinalIgnoreCase)
-                        || wanted.Contains(e.EventKey, StringComparison.OrdinalIgnoreCase)
-                        || e.EventKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            // Closest first. Prefix matching alone returned SystemHand second behind
-            // SystemAsterisk, which undersells a suggestion that is almost always right.
-            .OrderByDescending(e => CommonPrefixLength(e.EventKey, wanted))
-            .ThenBy(e => Math.Abs(e.EventKey.Length - wanted.Length))
-            .Take(5)
+        var suggestions = NearestMatches(events.Select(e => e.EventKey), wanted)
+            .Select(key => events.First(e =>
+                e.EventKey.Equals(key, StringComparison.OrdinalIgnoreCase)))
             .Select(e => $"{e.AppKey}\\{e.EventKey}")
             .ToList();
 
@@ -345,15 +497,60 @@ public sealed class CliRunner
         return false;
     }
 
-    /// <summary>Length of the shared leading run of two strings, case-insensitively.</summary>
-    private static int CommonPrefixLength(string a, string b)
+    /// <summary>
+    /// Names close enough to a mistyped one to be worth suggesting, nearest first.
+    ///
+    /// Edit distance rather than prefix matching. A prefix heuristic handles transpositions
+    /// (SystemHnad) but silently fails on a deletion: Arow and Arrow share only two leading
+    /// characters, so nothing was suggested for the most obvious typo of the most common
+    /// cursor. With at most a few dozen candidates the real computation costs nothing.
+    /// </summary>
+    private static IReadOnlyList<string> NearestMatches(IEnumerable<string> candidates, string query, int take = 5)
     {
-        var max = Math.Min(a.Length, b.Length);
-        var i = 0;
+        // Scales with the query so short names do not match everything and long ones still
+        // tolerate a couple of slips.
+        var threshold = Math.Max(2, query.Length / 3);
 
-        while (i < max && char.ToLowerInvariant(a[i]) == char.ToLowerInvariant(b[i])) i++;
+        return candidates
+            .Select(name => (Name: name, Distance: EditDistance(name, query)))
+            .Where(x => x.Distance <= threshold
+                        || x.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                        || query.Contains(x.Name, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Distance)
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(take)
+            .Select(x => x.Name)
+            .ToList();
+    }
 
-        return i;
+    /// <summary>Levenshtein distance, case-insensitive, with a rolling two-row buffer.</summary>
+    private static int EditDistance(string a, string b)
+    {
+        if (a.Length == 0) return b.Length;
+        if (b.Length == 0) return a.Length;
+
+        var previous = new int[b.Length + 1];
+        var current = new int[b.Length + 1];
+
+        for (var j = 0; j <= b.Length; j++) previous[j] = j;
+
+        for (var i = 1; i <= a.Length; i++)
+        {
+            current[0] = i;
+
+            for (var j = 1; j <= b.Length; j++)
+            {
+                var cost = char.ToLowerInvariant(a[i - 1]) == char.ToLowerInvariant(b[j - 1]) ? 0 : 1;
+
+                current[j] = Math.Min(
+                    Math.Min(current[j - 1] + 1, previous[j] + 1),
+                    previous[j - 1] + cost);
+            }
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[b.Length];
     }
 
     private int Report(OperationResult result)

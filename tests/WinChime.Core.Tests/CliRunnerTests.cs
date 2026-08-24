@@ -1,4 +1,5 @@
 using WinChime.Core.Cli;
+using WinChime.Core.Cursors;
 using WinChime.Core.Sounds;
 
 namespace WinChime.Core.Tests;
@@ -12,6 +13,7 @@ public sealed class CliRunnerTests : IDisposable
 {
     private readonly ScratchRegistry _reg = new();
     private readonly TestWav _wav = new();
+    private readonly TestCursor _cur = new();
     private readonly StringWriter _out = new();
     private readonly CliRunner _cli;
 
@@ -31,6 +33,7 @@ public sealed class CliRunnerTests : IDisposable
     {
         _reg.Dispose();
         _wav.Dispose();
+        _cur.Dispose();
         _out.Dispose();
     }
 
@@ -310,6 +313,169 @@ public sealed class CliRunnerTests : IDisposable
     public void ExportPack_WithoutAPath_ReturnsUsage()
     {
         Assert.Equal(CliRunner.ExitUsage, _cli.Run(new[] { "--export-pack" }));
+    }
+
+    // ---------------------------------------------------------------- cursors --
+
+    /// <summary>A runner whose cursor service points entirely at scratch keys.</summary>
+    private CliRunner WithCursors()
+    {
+        _reg.SeedCursor("Arrow", @"C:\WINDOWS\cursors\aero_arrow.cur");
+        _reg.SeedCursor("IBeam", "");
+        _reg.SeedActiveCursorScheme("Windows Default");
+
+        return new CliRunner(_out, _reg.Root, _wav.PathFor("backups"), _reg.CreateCursorService());
+    }
+
+    [Fact]
+    public void ListCursors_ShowsEveryRole()
+    {
+        Assert.Equal(CliRunner.ExitOk, WithCursors().Run(new[] { "--list-cursors" }));
+
+        Assert.Contains("Arrow", Output);
+        Assert.Contains("Person", Output);
+        Assert.Contains("17 cursor(s)", Output);
+    }
+
+    [Fact]
+    public void ListCursors_FiltersOnRoleAndDisplayName()
+    {
+        WithCursors().Run(new[] { "--list-cursors", "resize" });
+
+        Assert.Contains("SizeNS", Output);
+        Assert.DoesNotContain("Person", Output);
+    }
+
+    [Fact]
+    public void GetCursor_ShowsTheDetail()
+    {
+        Assert.Equal(CliRunner.ExitOk, WithCursors().Run(new[] { "--get-cursor", "Arrow" }));
+
+        Assert.Contains("aero_arrow.cur", Output);
+        Assert.Contains("Normal Select", Output);
+    }
+
+    [Fact]
+    public void GetCursor_SystemDrawnRole_SaysSoRatherThanLookingBroken()
+    {
+        WithCursors().Run(new[] { "--get-cursor", "IBeam" });
+
+        Assert.Contains("drawn by Windows", Output);
+    }
+
+    [Fact]
+    public void GetCursor_TypoInRoleName_Suggests()
+    {
+        Assert.Equal(CliRunner.ExitFailed, WithCursors().Run(new[] { "--get-cursor", "Arow" }));
+        Assert.Contains("Arrow", Output);
+    }
+
+    [Fact]
+    public void GetCursor_CompletelyUnknownRole_PointsAtTheList()
+    {
+        WithCursors().Run(new[] { "--get-cursor", "Zzzqqq" });
+        Assert.Contains("--list-cursors", Output);
+    }
+
+    [Fact]
+    public void SetCursor_AssignsAValidCursorFile()
+    {
+        var cursor = _cur.WriteCur("pointer.cur");
+
+        Assert.Equal(CliRunner.ExitOk, WithCursors().Run(new[] { "--set-cursor", "Arrow", cursor }));
+        Assert.Equal(Path.GetFullPath(cursor), _reg.ReadCursor("Arrow"));
+    }
+
+    /// <summary>
+    /// Unlike audio there is nothing to convert, so an unusable file is simply refused
+    /// rather than assigned and left to fail silently.
+    /// </summary>
+    [Fact]
+    public void SetCursor_IconRenamedAsCursor_IsRefused()
+    {
+        var fake = _cur.WriteIcoPretendingToBeCur();
+
+        // WithCursors does the seeding, so the "before" value has to be read after it.
+        var cli = WithCursors();
+        var before = _reg.ReadCursor("Arrow");
+
+        Assert.Equal(CliRunner.ExitFailed, cli.Run(new[] { "--set-cursor", "Arrow", fake }));
+
+        Assert.Contains("icon", Output, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(before, _reg.ReadCursor("Arrow"));
+    }
+
+    [Fact]
+    public void SetCursor_MissingFile_IsRefused()
+    {
+        Assert.Equal(CliRunner.ExitFailed,
+            WithCursors().Run(new[] { "--set-cursor", "Arrow", _cur.PathFor("absent.cur") }));
+    }
+
+    [Fact]
+    public void SystemCursor_ClearsTheAssignment()
+    {
+        Assert.Equal(CliRunner.ExitOk, WithCursors().Run(new[] { "--system-cursor", "Arrow" }));
+        Assert.Equal(string.Empty, _reg.ReadCursor("Arrow"));
+    }
+
+    [Fact]
+    public void ListCursorSchemes_MarksTheActiveScheme()
+    {
+        var cli = WithCursors();
+        _reg.SeedCursorScheme("Windows Black", new[] { @"C:\a.cur" }, systemScheme: true);
+
+        Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--list-cursor-schemes" }));
+
+        Assert.Contains("Windows Black", Output);
+        Assert.Contains("Active:", Output);
+    }
+
+    [Fact]
+    public void ApplyCursorScheme_UnknownName_PointsAtTheSchemeList()
+    {
+        Assert.Equal(CliRunner.ExitFailed,
+            WithCursors().Run(new[] { "--apply-cursor-scheme", "NoSuchScheme" }));
+
+        Assert.Contains("--list-cursor-schemes", Output);
+    }
+
+    [Fact]
+    public void ApplyCursorScheme_AppliesEveryRolePositionally()
+    {
+        var cli = WithCursors();
+
+        var values = new string[CursorRoles.All.Count];
+        Array.Fill(values, string.Empty);
+        values[CursorRoles.IndexOf("Arrow")] = @"C:\scheme-arrow.cur";
+        values[CursorRoles.IndexOf("Hand")] = @"C:\scheme-hand.cur";
+
+        _reg.SeedCursorScheme("Test Scheme", values, systemScheme: true);
+
+        Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--apply-cursor-scheme", "Test Scheme" }));
+
+        Assert.Equal(@"C:\scheme-arrow.cur", _reg.ReadCursor("Arrow"));
+        Assert.Equal(@"C:\scheme-hand.cur", _reg.ReadCursor("Hand"));
+    }
+
+    [Fact]
+    public void CursorCommands_WithoutEnoughArguments_ReturnUsage()
+    {
+        var cli = WithCursors();
+
+        Assert.Equal(CliRunner.ExitUsage, cli.Run(new[] { "--get-cursor" }));
+        Assert.Equal(CliRunner.ExitUsage, cli.Run(new[] { "--set-cursor", "Arrow" }));
+        Assert.Equal(CliRunner.ExitUsage, cli.Run(new[] { "--apply-cursor-scheme" }));
+    }
+
+    [Fact]
+    public void Help_ListsTheCursorCommands()
+    {
+        _cli.Run(new[] { "--help" });
+
+        Assert.Contains("--list-cursors", Output);
+        Assert.Contains("--set-cursor", Output);
+        Assert.Contains("--apply-cursor-scheme", Output);
     }
 
     // ----------------------------------------------------------------- backup --
