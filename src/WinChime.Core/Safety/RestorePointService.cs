@@ -45,6 +45,20 @@ public sealed class RestorePointService
                     "or one having already been created in the last 24 hours.");
             }
 
+            // Success with sequence number 0 does NOT mean a restore point was created.
+            // Windows returns exactly that when it decides to skip the request, most often
+            // because of the once-per-24-hours throttle, and logs event 8216 saying so.
+            // Reporting it as created would be a lie the user might later rely on, which is
+            // the worst possible outcome for something whose entire job is being a safety net.
+            if (status.llSequenceNumber == 0)
+            {
+                return OperationResult.Fail(
+                    "Windows skipped this request and did not create a restore point. That usually " +
+                    "means one already exists from the last 24 hours, or System Protection is off " +
+                    "for this drive. Your sound settings are backed up by WinChime regardless, " +
+                    "which does not depend on System Restore.");
+            }
+
             // Close the change window straight away; we are not wrapping an installer.
             var end = new NativeMethods.RestorePointInfo
             {
