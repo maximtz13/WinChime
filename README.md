@@ -376,6 +376,7 @@ dotnet publish src/WinChime.App -c Release -r win-x64 --self-contained false -p:
 ```
 src/WinChime.Core/          class library, no UI, zero NuGet dependencies
   Model/                    SoundEvent, SystemInfo, BackupManifest, OperationResult…
+  Cli/                      CliRunner (the command-line surface)
   Sounds/                   SoundSchemeService, WaveFile, SoundPreview,
                             AudioTranscoder, SoundPackService
   Startup/                  StartupSoundService, LogonChimeService, SystemChimeResource
@@ -421,13 +422,63 @@ to get subtly wrong than to review. Pinned to 2.x because NAudio 3.x requires .N
 Every mutating call returns an `OperationResult` rather than throwing, so the UI can show a
 precise reason (access denied, policy blocked, file missing) instead of a stack trace.
 
-### Command-line modes
+## Command line
+
+`WinChime.exe` with no arguments opens the app. With a command it behaves like a CLI, which
+makes sound configuration scriptable — applying a pack across machines rather than clicking
+through a window on each one.
+
+```bash
+WinChime.exe --help
+```
+
+| Command | Effect |
+|---|---|
+| `--list [text]` | List sound events, optionally filtered |
+| `--list-schemes` | List installed schemes, marking the active one |
+| `--get <App\Event>` | Show one event, including its audio format and any warnings |
+| `--set <App\Event> <file.wav>` | Assign a sound |
+| `--silence <App\Event>` | Silence an event |
+| `--restore-default <App\Event>` | Restore the Windows default |
+| `--apply-scheme <name>` | Switch to a stored scheme |
+| `--export-pack <file> [name]` | Write the current sounds to a `.winchimepack` |
+| `--apply-pack <file>` | Install and apply a pack |
+| `--backup [label]` | Snapshot the current assignments |
+
+Exit codes are `0` success, `1` failed, `2` usage error, so failures are detectable in a
+script rather than needing output parsing.
+
+Two behaviours differ deliberately from the GUI:
+
+- **Non-PCM files are refused, not converted.** The app offers to convert an MP3; a script
+  has nobody to ask, so the CLI fails with an explanation rather than assigning something
+  Windows would accept and then play silently.
+- **Mistyped event names suggest alternatives.** Event keys are not memorable, and a bare
+  "not found" makes a CLI hostile. Matching is on shared prefix rather than substring,
+  because a typo is usually a transposition — `SystemHnad` neither contains nor is contained
+  by `SystemHand`, but they share seven leading characters.
+
+### Why a GUI executable can print at all
+
+WinChime is built as `WinExe` so the logon task does not flash a console window at sign-in.
+The cost is that it has no console, so `Console.WriteLine` goes nowhere. `ConsoleSession`
+attaches to the parent terminal and rebuilds the standard streams, because by then the CLR
+has already cached a null stdout handle and output would otherwise vanish silently. Launched
+without a parent console it allocates one and waits for a keypress before closing.
+
+One quirk has no fix short of shipping a second executable: the shell prints its next prompt
+as soon as it launches a GUI process, so output arrives after that prompt. Every
+GUI-with-CLI app on Windows behaves this way.
+
+### Internal switches
 
 | Invocation | Effect |
 |---|---|
-| *(no args)* | Normal UI |
 | `--play-chime "<wav>"` | Plays the file synchronously and exits. Used by the logon task; never creates a window. |
-| `--elevated-op "<json>"` | Internal. The elevated child spawned by `ElevationHelper`. |
+| `--elevated-op "<json>"` | The elevated child spawned by `ElevationHelper`. |
+
+Both are implementation detail, excluded from `--help`, and routed away from the CLI parser
+so they can never be mistaken for user commands.
 
 ---
 
