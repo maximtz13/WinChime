@@ -1,4 +1,7 @@
-# WinChime
+
+| `--get-accent` | Show the accent colour and its shade ladder |
+| `--set-accent <#RRGGBB> [on|off]` | Set it; on/off shows it on Start and title bars |
+| `--list-accent-presets` | List the Windows swatches |# WinChime
 
 [![CI](https://github.com/maximtz13/WinChime/actions/workflows/ci.yml/badge.svg)](https://github.com/maximtz13/WinChime/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -223,6 +226,47 @@ API — a one-off registration does not justify another dependency, and the XML 
 inspectable by anyone wondering what runs at their logon. Note `schtasks` requires the XML
 file to be **UTF-16**; UTF-8 is rejected with an unhelpful parse error.
 
+### Accent colour — `AccentColorService`
+
+One colour, three unrelated HKCU keys, and no documentation for any of it. Windows stores
+the accent in `Explorer\Accent` (a palette plus two derived values), `DWM` (twice, in two
+different byte orders), and `Themes\Personalize`.
+
+**The registry alone is not trustworthy here.** On the machine this was built against,
+`DWM\AccentColor` held a stale blue while the accent actually in use was green. What
+resolved it was cross-checking against `Windows.UI.ViewManagement.UISettings` — the API
+Windows answers accent questions with. That showed `AccentPalette` maps exactly onto the
+`UIColorType` ladder:
+
+```
+[0] AccentLight3   [3] Accent  <- the real value   [5] AccentDark2
+[1] AccentLight2   [4] AccentDark1                 [6] AccentDark3
+[2] AccentLight1                                   [7] fixed sentinel, alpha 0, not a colour
+```
+
+So the accent is read from `AccentPalette[3]`, never from DWM.
+
+The shade ladder turns out to be a plain multiplicative scale of the accent, which preserves
+hue and saturation exactly. Verified against the live palette:
+
+```
+worst channel difference across the whole ladder: 1/255
+4 of 7 shades exact
+AccentColorMenu and StartColorMenu: exact
+```
+
+Being an approximation of an undocumented algorithm, a tint may occasionally land one value
+off what Settings would produce. That is cosmetic.
+
+Multiplying breaks near white — channels clamp unevenly and the hue drifts toward grey — so
+above the available headroom the colour is blended toward white instead. A light blue
+lightens into a paler blue rather than washing out.
+
+Writing the registry changes nothing on screen until running applications are told to
+re-read it, so the change is broadcast. Window borders and most apps update immediately;
+**Start and the taskbar cache the colour and may need a sign-out.** The app says so, because
+otherwise it reads as a failed write.
+
 ### Lock screen — `LockScreenService`
 
 There is no clean option here for an unpackaged desktop app:
@@ -438,7 +482,8 @@ src/WinChime.Core/          class library, no UI, zero NuGet dependencies
   Sounds/                   SoundSchemeService, WaveFile, SoundPreview,
                             AudioTranscoder, SoundPackService
   Startup/                  StartupSoundService, LogonChimeService, SystemChimeResource
-  Personalization/          WallpaperService, LockScreenService
+  Personalization/          WallpaperService, LockScreenService,
+                            AccentColorService, AccentPalette
   Safety/                   SystemProbe, BackupService, RestorePointService
   Elevation/                ElevationHelper  (the elevated-op protocol)
   Interop/                  NativeMethods, ProcessRunner

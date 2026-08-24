@@ -1,5 +1,6 @@
 using WinChime.Core.Cursors;
 using WinChime.Core.Model;
+using WinChime.Core.Personalization;
 using WinChime.Core.Safety;
 using WinChime.Core.Sounds;
 
@@ -25,6 +26,7 @@ public sealed class CliRunner
     private readonly SoundSchemeService _sounds;
     private readonly BackupService _backups;
     private readonly CursorSchemeService _cursors;
+    private readonly AccentColorService _accent;
 
     /// <param name="cursors">
     /// Injected whole rather than as a path, because a cursor service needs three registry
@@ -34,12 +36,14 @@ public sealed class CliRunner
         TextWriter output,
         string? registryRoot = null,
         string? backupRoot = null,
-        CursorSchemeService? cursors = null)
+        CursorSchemeService? cursors = null,
+        AccentColorService? accent = null)
     {
         _out = output;
         _sounds = new SoundSchemeService(registryRoot ?? SoundSchemeService.DefaultRegistryRoot);
         _backups = new BackupService(_sounds, backupRoot);
         _cursors = cursors ?? new CursorSchemeService();
+        _accent = accent ?? new AccentColorService();
     }
 
     /// <summary>True when these arguments are meant for the CLI rather than the GUI.</summary>
@@ -83,6 +87,9 @@ public sealed class CliRunner
                 "--system-cursor" => SetCursor(rest.Count == 1 ? new List<string> { rest[0], "" } : rest),
                 "--list-cursor-schemes" => ListCursorSchemes(),
                 "--apply-cursor-scheme" => ApplyCursorScheme(rest),
+                "--get-accent" => GetAccent(),
+                "--set-accent" => SetAccent(rest),
+                "--list-accent-presets" => ListAccentPresets(),
                 _ => Fail($"Unknown command: {args[0]}. Try --help.", ExitUsage),
             };
         }
@@ -123,6 +130,11 @@ public sealed class CliRunner
         _out.WriteLine("  --set-cursor <Role> <file.cur|.ani>       assign a cursor");
         _out.WriteLine("  --system-cursor <Role>                    let Windows draw it");
         _out.WriteLine("  --apply-cursor-scheme <name>              switch to a cursor scheme");
+        _out.WriteLine();
+        _out.WriteLine("Accent colour");
+        _out.WriteLine("  --get-accent                              show the accent colour and its shades");
+        _out.WriteLine("  --set-accent <#RRGGBB> [on|off]           set it; on/off shows it on Start and title bars");
+        _out.WriteLine("  --list-accent-presets                     list the Windows swatches");
         _out.WriteLine();
         _out.WriteLine("Safety");
         _out.WriteLine("  --backup [label]                          snapshot the current assignments");
@@ -452,6 +464,69 @@ public sealed class CliRunner
             : $"No cursor role named {roleName}. Run --list-cursors to see the available roles.";
 
         return false;
+    }
+
+    // -------------------------------------------------------------------- accent --
+
+    private int GetAccent()
+    {
+        var state = _accent.GetState();
+
+        if (state.Accent is not { } accent)
+        {
+            _out.WriteLine("Windows has not recorded an accent colour.");
+            return ExitOk;
+        }
+
+        _out.WriteLine($"Accent      : {accent.Hex}  (R={accent.R} G={accent.G} B={accent.B})");
+        _out.WriteLine($"On surfaces : {(state.ColorPrevalence ? "yes" : "no")}");
+        _out.WriteLine($"Transparency: {(state.TransparencyEnabled ? "on" : "off")}");
+        _out.WriteLine();
+        _out.WriteLine("Shades, lightest to darkest:");
+
+        foreach (var shade in AccentPalette.Shades(accent)) _out.WriteLine($"  {shade.Hex}");
+
+        return ExitOk;
+    }
+
+    private int SetAccent(IReadOnlyList<string> args)
+    {
+        if (args.Count < 1) return Fail("Usage: --set-accent <#RRGGBB> [on|off]", ExitUsage);
+
+        if (!AccentRgb.TryParse(args[0], out var colour))
+        {
+            return Fail(
+                $"\"{args[0]}\" is not a colour. Use #RRGGBB, for example #0078D7, " +
+                "or run --list-accent-presets.",
+                ExitUsage);
+        }
+
+        bool? showOnSurfaces = null;
+
+        if (args.Count > 1)
+        {
+            showOnSurfaces = args[1].ToLowerInvariant() switch
+            {
+                "on" or "yes" or "true" or "1" => true,
+                "off" or "no" or "false" or "0" => false,
+                _ => null,
+            };
+
+            if (showOnSurfaces is null)
+                return Fail($"Expected on or off for the second argument, got \"{args[1]}\".", ExitUsage);
+        }
+
+        return Report(_accent.Apply(colour, showOnSurfaces));
+    }
+
+    private int ListAccentPresets()
+    {
+        foreach (var preset in AccentColorService.Presets) _out.WriteLine($"  {preset.Hex}");
+
+        _out.WriteLine();
+        _out.WriteLine($"{AccentColorService.Presets.Count} preset(s). Any #RRGGBB value is accepted.");
+
+        return ExitOk;
     }
 
     // ------------------------------------------------------------------- helpers --

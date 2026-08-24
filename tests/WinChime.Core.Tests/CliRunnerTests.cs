@@ -1,5 +1,6 @@
 using WinChime.Core.Cli;
 using WinChime.Core.Cursors;
+using WinChime.Core.Personalization;
 using WinChime.Core.Sounds;
 
 namespace WinChime.Core.Tests;
@@ -476,6 +477,97 @@ public sealed class CliRunnerTests : IDisposable
         Assert.Contains("--list-cursors", Output);
         Assert.Contains("--set-cursor", Output);
         Assert.Contains("--apply-cursor-scheme", Output);
+    }
+
+    // ----------------------------------------------------------------- accent --
+
+    private CliRunner WithAccent() => new(
+        _out, _reg.Root, _wav.PathFor("backups"), null,
+        new AccentColorService(new AccentRegistryPaths(
+            $@"{_reg.Root}\Accent", $@"{_reg.Root}\DWM", $@"{_reg.Root}\Personalize")));
+
+    [Fact]
+    public void GetAccent_WithNothingSet_SaysSoRatherThanFailing()
+    {
+        Assert.Equal(CliRunner.ExitOk, WithAccent().Run(new[] { "--get-accent" }));
+        Assert.Contains("not recorded", Output);
+    }
+
+    [Fact]
+    public void SetThenGetAccent_RoundTrips()
+    {
+        var cli = WithAccent();
+
+        Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--set-accent", "#0078D7" }));
+        Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--get-accent" }));
+
+        Assert.Contains("#0078D7", Output);
+    }
+
+    [Fact]
+    public void GetAccent_ListsTheShadeLadder()
+    {
+        var cli = WithAccent();
+        cli.Run(new[] { "--set-accent", "#25594A" });
+        _out.GetStringBuilder().Clear();
+
+        cli.Run(new[] { "--get-accent" });
+
+        // Seven shades plus the accent line itself.
+        Assert.Contains("Shades", Output);
+        Assert.Contains("#3F977", Output);   // the lightest step, allowing the last digit to vary
+    }
+
+    [Theory]
+    [InlineData("notacolour")]
+    [InlineData("#12345")]
+    [InlineData("")]
+    public void SetAccent_RejectsJunkWithUsageExit(string value)
+    {
+        Assert.Equal(CliRunner.ExitUsage, WithAccent().Run(new[] { "--set-accent", value }));
+    }
+
+    [Fact]
+    public void SetAccent_WithoutAnArgument_ReturnsUsage()
+    {
+        Assert.Equal(CliRunner.ExitUsage, WithAccent().Run(new[] { "--set-accent" }));
+    }
+
+    [Theory]
+    [InlineData("on")]
+    [InlineData("off")]
+    [InlineData("true")]
+    [InlineData("0")]
+    public void SetAccent_AcceptsTheUsualBooleanSpellings(string flag)
+    {
+        Assert.Equal(CliRunner.ExitOk, WithAccent().Run(new[] { "--set-accent", "#0078D7", flag }));
+    }
+
+    [Fact]
+    public void SetAccent_RejectsAnUnrecognisedSecondArgument()
+    {
+        var result = WithAccent().Run(new[] { "--set-accent", "#0078D7", "maybe" });
+
+        Assert.Equal(CliRunner.ExitUsage, result);
+        Assert.Contains("on or off", Output);
+    }
+
+    [Fact]
+    public void ListAccentPresets_ShowsTheWindowsSwatches()
+    {
+        Assert.Equal(CliRunner.ExitOk, WithAccent().Run(new[] { "--list-accent-presets" }));
+
+        Assert.Contains("#0078D7", Output);
+        Assert.Contains("preset(s)", Output);
+    }
+
+    [Fact]
+    public void Help_ListsTheAccentCommands()
+    {
+        _cli.Run(new[] { "--help" });
+
+        Assert.Contains("--get-accent", Output);
+        Assert.Contains("--set-accent", Output);
     }
 
     // ----------------------------------------------------------------- backup --
