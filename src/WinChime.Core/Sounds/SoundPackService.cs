@@ -5,13 +5,6 @@ using WinChime.Core.Model;
 
 namespace WinChime.Core.Sounds;
 
-public sealed record PackResult(bool Success, string Message, string? Path = null)
-{
-    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
-
-    public static PackResult Fail(string message) => new(false, message);
-}
-
 /// <summary>
 /// Sound packs: a whole scheme plus the audio it needs, in one shareable file.
 ///
@@ -260,30 +253,11 @@ public static class SoundPackService
     // -------------------------------------------------------------------- helpers --
 
     /// <summary>
-    /// True for sounds that ship with Windows. Checks the unexpanded form first so the
-    /// common %SystemRoot% case is caught without touching the filesystem.
+    /// True for sounds that ship with Windows, which are referenced rather than bundled.
+    /// The rule itself lives in <see cref="WindowsShippedFile"/> because cursor packs make
+    /// exactly the same decision, and two copies of it would eventually disagree.
     /// </summary>
-    public static bool IsWindowsShippedSound(string rawValue)
-    {
-        var trimmed = rawValue.TrimStart();
-
-        if (trimmed.StartsWith("%SystemRoot%", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith("%windir%", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        try
-        {
-            var windows = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-            var full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(rawValue));
-            return full.StartsWith(windows + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public static bool IsWindowsShippedSound(string rawValue) => WindowsShippedFile.Is(rawValue);
 
     private static string UniqueEntryName(string fileName, HashSet<string> used)
     {

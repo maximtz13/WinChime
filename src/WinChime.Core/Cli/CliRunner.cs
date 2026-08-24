@@ -87,6 +87,8 @@ public sealed class CliRunner
                 "--system-cursor" => SetCursor(rest.Count == 1 ? new List<string> { rest[0], "" } : rest),
                 "--list-cursor-schemes" => ListCursorSchemes(),
                 "--apply-cursor-scheme" => ApplyCursorScheme(rest),
+                "--export-cursor-pack" => ExportCursorPack(rest),
+                "--apply-cursor-pack" => ApplyCursorPack(rest),
                 "--get-accent" => GetAccent(),
                 "--set-accent" => SetAccent(rest),
                 "--list-accent-presets" => ListAccentPresets(),
@@ -130,6 +132,8 @@ public sealed class CliRunner
         _out.WriteLine("  --set-cursor <Role> <file.cur|.ani>       assign a cursor");
         _out.WriteLine("  --system-cursor <Role>                    let Windows draw it");
         _out.WriteLine("  --apply-cursor-scheme <name>              switch to a cursor scheme");
+        _out.WriteLine("  --export-cursor-pack <file> [name]        write the current cursors to a pack");
+        _out.WriteLine("  --apply-cursor-pack <file>                install and apply a cursor pack");
         _out.WriteLine();
         _out.WriteLine("Accent colour");
         _out.WriteLine("  --get-accent                              show the accent colour and its shades");
@@ -442,6 +446,49 @@ public sealed class CliRunner
                 $"No cursor scheme named \"{requested}\". Run --list-cursor-schemes to see what is installed.",
                 ExitFailed);
         }
+
+        return Report(_cursors.ApplyScheme(scheme.Name));
+    }
+
+    private int ExportCursorPack(IReadOnlyList<string> args)
+    {
+        if (args.Count < 1) return Fail("Usage: --export-cursor-pack <file> [name]", ExitUsage);
+
+        var destination = args[0];
+        var name = args.Count > 1 ? args[1] : Path.GetFileNameWithoutExtension(destination);
+
+        var scheme = new CursorSchemeExport { Name = name, Author = Environment.UserName };
+
+        foreach (var pair in _cursors.CaptureAssignments())
+            scheme.Assignments[pair.Key] = pair.Value;
+
+        var result = CursorPackService.Create(destination, scheme);
+
+        foreach (var warning in result.Warnings) _out.WriteLine($"Warning: {warning}");
+
+        _out.WriteLine(result.Message);
+        return result.Success ? ExitOk : ExitFailed;
+    }
+
+    private int ApplyCursorPack(IReadOnlyList<string> args)
+    {
+        if (args.Count < 1) return Fail("Usage: --apply-cursor-pack <file>", ExitUsage);
+
+        var (scheme, result) = CursorPackService.Install(args[0]);
+
+        foreach (var warning in result.Warnings) _out.WriteLine($"Warning: {warning}");
+
+        if (scheme is null || !result.Success) return Fail(result.Message, ExitFailed);
+
+        _out.WriteLine(result.Message);
+
+        // Registered as a named scheme first, then applied by name. Going through ApplyScheme
+        // rather than writing the seventeen values directly is what sets the active scheme
+        // name and Scheme Source the way Windows expects, gets the single SPI_SETCURSORS, and
+        // brings the rollback-on-failure along with it. It also means the pack shows up in
+        // --list-cursor-schemes afterwards, so it can be switched back to.
+        var saved = _cursors.SaveScheme(scheme.Name, CursorPackService.ToSchemeValues(scheme));
+        if (!saved.Success) return Fail(saved.Message, ExitFailed);
 
         return Report(_cursors.ApplyScheme(scheme.Name));
     }

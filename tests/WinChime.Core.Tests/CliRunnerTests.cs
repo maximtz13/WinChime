@@ -477,6 +477,96 @@ public sealed class CliRunnerTests : IDisposable
         Assert.Contains("--list-cursors", Output);
         Assert.Contains("--set-cursor", Output);
         Assert.Contains("--apply-cursor-scheme", Output);
+        Assert.Contains("--export-cursor-pack", Output);
+        Assert.Contains("--apply-cursor-pack", Output);
+    }
+
+    // ----------------------------------------------------------- cursor packs --
+
+    [Fact]
+    public void ExportThenApplyCursorPack_RoundTrips()
+    {
+        var cli = WithCursors();
+        var cursor = _cur.WriteCur("packed.cur");
+
+        Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--set-cursor", "Arrow", cursor }));
+
+        var pack = _wav.PathFor("test" + CursorPackService.PackExtension);
+        Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--export-cursor-pack", pack, "Test Cursors" }));
+        Assert.True(File.Exists(pack));
+
+        // Change it, then prove applying the pack puts a working cursor back.
+        Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--system-cursor", "Arrow" }));
+        Assert.Equal(string.Empty, _reg.ReadCursor("Arrow"));
+
+        try
+        {
+            Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--apply-cursor-pack", pack }));
+
+            var restored = _reg.ReadCursor("Arrow");
+            Assert.False(string.IsNullOrEmpty(restored));
+            Assert.True(File.Exists(restored));
+
+            // It points at the extracted copy, not at the original that was packed.
+            Assert.NotEqual(cursor, restored);
+        }
+        finally
+        {
+            CleanInstalledPack("Test Cursors");
+        }
+    }
+
+    /// <summary>
+    /// Installing registers the pack as a named scheme rather than only rewriting the live
+    /// values, so it can be switched back to after trying something else.
+    /// </summary>
+    [Fact]
+    public void ApplyCursorPack_RegistersAReusableScheme()
+    {
+        var cli = WithCursors();
+
+        Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--set-cursor", "Arrow", _cur.WriteCur("reusable.cur") }));
+
+        var pack = _wav.PathFor("reusable" + CursorPackService.PackExtension);
+        cli.Run(new[] { "--export-cursor-pack", pack, "Reusable" });
+
+        try
+        {
+            Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--apply-cursor-pack", pack }));
+
+            _out.GetStringBuilder().Clear();
+            Assert.Equal(CliRunner.ExitOk, cli.Run(new[] { "--list-cursor-schemes" }));
+
+            Assert.Contains("Reusable", Output);
+        }
+        finally
+        {
+            CleanInstalledPack("Reusable");
+        }
+    }
+
+    [Fact]
+    public void ApplyCursorPack_MissingFile_FailsCleanly()
+    {
+        Assert.Equal(CliRunner.ExitFailed,
+            WithCursors().Run(new[] { "--apply-cursor-pack", _wav.PathFor("nope" + CursorPackService.PackExtension) }));
+    }
+
+    [Fact]
+    public void ExportCursorPack_WithoutAPath_ReturnsUsage()
+    {
+        Assert.Equal(CliRunner.ExitUsage, WithCursors().Run(new[] { "--export-cursor-pack" }));
+        Assert.Contains("Usage:", Output);
+    }
+
+    /// <summary>
+    /// Installing writes into LocalApplicationData, which is outside the scratch registry the
+    /// rest of the suite lives in. Removing it keeps a test run from accumulating folders.
+    /// </summary>
+    private static void CleanInstalledPack(string name)
+    {
+        try { Directory.Delete(Path.Combine(CursorPackService.PacksFolder, name), recursive: true); }
+        catch { /* best effort */ }
     }
 
     // ----------------------------------------------------------------- accent --

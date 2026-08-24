@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using WinChime.Core.Cursors;
 
 namespace WinChime.Core.Tests;
@@ -374,6 +375,83 @@ public sealed class CursorSchemeServiceTests : IDisposable
     public void SaveCurrentAsScheme_RefusesACommaInTheName()
     {
         Assert.False(_service.SaveCurrentAsScheme("bad,name").Success);
+    }
+
+    // --------------------------------------------------- saving supplied values --
+
+    [Fact]
+    public void SaveScheme_WritesValuesWithoutReadingTheLiveCursors()
+    {
+        var values = SchemeValues(("Arrow", @"C:\packed\arrow.cur"), ("Hand", @"C:\packed\hand.cur"));
+
+        Assert.True(_service.SaveScheme("From pack", values).Success);
+
+        // The live Arrow is still the seeded Windows one; only the scheme was written.
+        Assert.Equal(@"C:\WINDOWS\cursors\aero_arrow.cur", _reg.ReadCursor("Arrow"));
+
+        var stored = _service.ReadScheme("From pack");
+        Assert.NotNull(stored);
+        Assert.Equal(@"C:\packed\arrow.cur", stored![CursorRoles.IndexOf("Arrow")]);
+        Assert.Equal(@"C:\packed\hand.cur", stored[CursorRoles.IndexOf("Hand")]);
+    }
+
+    /// <summary>
+    /// The reason SaveScheme validates paths at all, and a case that could not arise before
+    /// cursor packs: a comma is a legal Windows filename character, so "arrow,2.cur" is an
+    /// ordinary file right up until it is written into a positional comma-separated string,
+    /// at which point every later role shifts by one with no error anywhere.
+    /// </summary>
+    [Fact]
+    public void SaveScheme_RefusesAPathContainingAComma()
+    {
+        var values = SchemeValues(("Arrow", @"C:\cursors\arrow,2.cur"));
+
+        var result = _service.SaveScheme("Comma", values);
+
+        Assert.False(result.Success);
+        Assert.Contains("comma", result.Message);
+
+        // And nothing was written, so a later read cannot pick up a half-formed scheme.
+        Assert.Null(_service.ReadScheme("Comma"));
+    }
+
+    [Fact]
+    public void SaveScheme_PadsAShortValueListToTheFullRoleCount()
+    {
+        Assert.True(_service.SaveScheme("Short", new[] { @"C:\only-arrow.cur" }).Success);
+
+        var stored = _service.ReadScheme("Short");
+
+        Assert.NotNull(stored);
+        Assert.Equal(CursorRoles.All.Count, stored!.Count);
+        Assert.Equal(@"C:\only-arrow.cur", stored[0]);
+        Assert.All(stored.Skip(1), v => Assert.Equal(string.Empty, v));
+    }
+
+    [Fact]
+    public void SaveScheme_RefusesToOverwriteAShippedScheme()
+    {
+        _reg.SeedCursorScheme("Windows Black", SchemeValues(("Arrow", @"C:\a.cur")), systemScheme: true);
+
+        Assert.False(_service.SaveScheme("Windows Black", SchemeValues(("Arrow", @"C:\b.cur"))).Success);
+    }
+
+    /// <summary>
+    /// One %SystemRoot% entry anywhere makes the whole scheme value expandable, which is how
+    /// Windows stores its own schemes. Getting this wrong leaves the literal text in the
+    /// registry and every cursor in that scheme silently missing.
+    /// </summary>
+    [Fact]
+    public void SaveScheme_StoresAnExpandableValueWhenAnyPathUsesAVariable()
+    {
+        Assert.True(_service.SaveScheme(
+            "Mixed", SchemeValues(("Arrow", @"%SystemRoot%\Cursors\aero_arrow.cur"))).Success);
+
+        Assert.True(_service.SaveScheme(
+            "Plain", SchemeValues(("Arrow", @"C:\arrow.cur"))).Success);
+
+        Assert.Equal(RegistryValueKind.ExpandString, _reg.ReadCursorSchemeKind("Mixed"));
+        Assert.Equal(RegistryValueKind.String, _reg.ReadCursorSchemeKind("Plain"));
     }
 
     [Fact]

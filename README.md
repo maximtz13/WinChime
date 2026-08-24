@@ -206,6 +206,43 @@ Status reads **Assigned** rather than "Custom". Windows records no per-role defa
 cursors, unlike sounds, so there is no way to distinguish a file the user chose from one
 that came with the active scheme, and claiming otherwise would mislabel every stock cursor.
 
+### Cursor packs — `CursorPackService`
+
+A cursor scheme travels worse than a sound scheme. Sounds at least have `%SystemRoot%`
+fallbacks that resolve anywhere; a cursor scheme is a list of absolute paths into whatever
+folder the author downloaded a set into, so sending one to another machine produces seventeen
+broken pointers and no error message. A pack is a zip holding `scheme.json` and a `cursors`
+folder, so sharing a cursor theme is sharing one file.
+
+Structurally the same as a sound pack — zip-slip guard, entry and size caps, format version
+check, deduplication, Windows' own files referenced rather than bundled. Three things are
+specific to cursors, and two of them were found the hard way.
+
+**Commas are structurally fatal.** The scheme is one comma-separated positional string, and a
+comma is a perfectly legal Windows filename character. A pack called `Dark, Round`, or a file
+called `arrow,2.cur`, would extract cleanly and then split into two entries — shifting every
+later role by one, silently, with the pointer for *Busy* ending up on *Precision Select*.
+Every name the pack service produces has commas stripped, an install path containing one is
+refused outright, and `CursorSchemeService.SaveScheme` rejects any value that still has one.
+
+**Windows stores cursor paths expanded.** This is where a fixture would have lied: reading
+`Control Panel\Cursors` on a stock Windows 11 install gives `C:\WINDOWS\cursors\aero_arrow.cur`,
+not the `%SystemRoot%` form that sound assignments arrive in. Storing what was read produced a
+pack that worked perfectly on the machine that made it and broke on any machine whose Windows
+is not on `C:` — caught only by exporting a real pack and reading the manifest. Paths under the
+Windows folder are collapsed back to `%SystemRoot%` on the way in.
+
+**A sound pack is a valid cursor pack, structurally.** Both keep their manifest in
+`scheme.json`, and a sound manifest deserializes into the cursor type perfectly happily with
+every assignment silently discarded — installing cleanly and changing nothing. A pack whose
+manifest contains no recognised cursor role is refused with a pointer to the Sounds tab.
+
+Installing registers the pack as a named scheme and then applies it *by name*, rather than
+writing the seventeen values directly. That routes through `ApplyScheme`, which is what sets
+the active scheme name and `Scheme Source` the way Windows expects, gets the single
+`SPI_SETCURSORS`, brings its rollback-on-failure along, and leaves the pack in the scheme list
+so it can be switched back to later.
+
 ### The logon chime — `StartupSoundService` / `LogonChimeService`
 
 The on/off switch is one HKLM DWORD:
@@ -529,9 +566,12 @@ dotnet publish src/WinChime.App -c Release -r win-x64 --self-contained false -p:
 
 ```
 src/WinChime.Core/          class library, no UI, zero NuGet dependencies
-  Model/                    SoundEvent, SystemInfo, BackupManifest, OperationResult…
+  Model/                    SoundEvent, SystemInfo, BackupManifest, OperationResult,
+                            PackResult, SchemeExport, CursorSchemeExport,
+                            WindowsShippedFile
   Cli/                      CliRunner (the command-line surface)
-  Cursors/                  CursorSchemeService, CursorFile, CursorRoles
+  Cursors/                  CursorSchemeService, CursorPackService, CursorFile,
+                            CursorRoles
   Sounds/                   SoundSchemeService, WaveFile, SoundPreview,
                             AudioTranscoder, SoundPackService
   Startup/                  StartupSoundService, LogonChimeService, SystemChimeResource
@@ -612,6 +652,8 @@ WinChime.exe --help
 | `--set-cursor <Role> <file>` | Assign a `.cur` or `.ani` |
 | `--system-cursor <Role>` | Let Windows draw that cursor |
 | `--apply-cursor-scheme <name>` | Switch to a cursor scheme |
+| `--export-cursor-pack <file> [name]` | Write the current cursors to a `.winchimecursorpack` |
+| `--apply-cursor-pack <file>` | Install a cursor pack, register it as a scheme, and apply it |
 | `--get-accent` | Show the accent colour and its shade ladder |
 | `--set-accent <#RRGGBB> [on\|off]` | Set it; on/off shows it on Start and title bars |
 | `--list-accent-presets` | List the Windows swatches |

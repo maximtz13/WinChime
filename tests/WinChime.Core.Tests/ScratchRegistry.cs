@@ -125,6 +125,20 @@ public sealed class ScratchRegistry : IDisposable
         return key?.GetValue(valueName);
     }
 
+    /// <summary>
+    /// The stored kind of a saved scheme. REG_EXPAND_SZ versus REG_SZ is the difference
+    /// between a %SystemRoot% path resolving and being taken literally, so it is asserted
+    /// rather than assumed.
+    /// </summary>
+    public RegistryValueKind? ReadCursorSchemeKind(string schemeName)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey($@"{CursorsRoot}\Schemes");
+        if (key is null) return null;
+
+        try { return key.GetValueKind(schemeName); }
+        catch (System.IO.IOException) { return null; }   // value not present
+    }
+
     // ------------------------------------------------------------------ reading --
 
     /// <summary>Reads .Current straight from the registry, bypassing the service under test.</summary>
