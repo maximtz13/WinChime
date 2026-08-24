@@ -38,6 +38,24 @@ public sealed class SoundEvent
 
     public string DisplayLabel => $"{AppDisplayName} • {EventDisplayName}";
 
+    /// <summary>
+    /// What a screen reader announces when focus reaches this row.
+    ///
+    /// A list row has no automation name of its own, so it falls back to whatever ToString
+    /// returns. Without this the Sounds tab reads as seventy-two repetitions of
+    /// "WinChime.Core.Model.SoundEvent", which is the sort of thing that is invisible on
+    /// screen and useless through a screen reader.
+    ///
+    /// Kept to the identity rather than the whole row: the grid cells are exposed separately
+    /// and already carry the file and the status, so repeating them here would only make
+    /// every row longer to listen to.
+    ///
+    /// Deliberately not <see cref="DisplayLabel"/>, for a cousin of the reason the CLI avoids
+    /// it. The bullet is read out, and "Windows bullet Alarm 1" is noise in a list being
+    /// scanned a row at a time.
+    /// </summary>
+    public override string ToString() => $"{AppDisplayName}, {EventDisplayName}";
+
     private static string? Expand(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : Environment.ExpandEnvironmentVariables(value);
 
