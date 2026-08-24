@@ -268,10 +268,18 @@ refused outright, and `CursorSchemeService.SaveScheme` rejects any value that st
 
 **Windows stores cursor paths expanded.** This is where a fixture would have lied: reading
 `Control Panel\Cursors` on a stock Windows 11 install gives `C:\WINDOWS\cursors\aero_arrow.cur`,
-not the `%SystemRoot%` form that sound assignments arrive in. Storing what was read produced a
-pack that worked perfectly on the machine that made it and broke on any machine whose Windows
-is not on `C:` — caught only by exporting a real pack and reading the manifest. Paths under the
-Windows folder are collapsed back to `%SystemRoot%` on the way in.
+not the `%SystemRoot%` form. Storing what was read produced a pack that worked perfectly on the
+machine that made it and broke on any machine whose Windows is not on `C:` — caught only by
+exporting a real pack and reading the manifest. Paths under the Windows folder are collapsed
+back to `%SystemRoot%` on the way in.
+
+This was first written up as a quirk of cursors specifically, with sound assignments assumed to
+arrive already unexpanded. That assumption was wrong, and only came out when the registry was
+counted instead of trusted: of the 49 assigned sounds on the same machine, **27 were stored as a
+literal `C:\WINDOWS\media\...` and 22 as `%SystemRoot%`**, all `REG_SZ`. So the same bug was
+live in `SoundPackService` the whole time, affecting most Windows sounds rather than none. Both
+services now collapse on export, and the real lesson is narrower than "cursors are odd": the
+registry is simply not consistent about which form it holds, and no code should assume.
 
 **A sound pack is a valid cursor pack, structurally.** Both keep their manifest in
 `scheme.json`, and a sound manifest deserializes into the cursor type perfectly happily with
