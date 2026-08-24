@@ -45,8 +45,10 @@ jobs:
         run: dotnet build WinChime.sln -c Release -warnaserror -p:Version=${{ steps.version.outputs.version }}
 
       # Two flavours, because the trade-off genuinely matters to users:
-      #   framework-dependent -> ~0.3 MB, needs the .NET 8 Desktop Runtime installed
-      #   self-contained      -> ~155 MB, single file, no prerequisites at all
+      #   framework-dependent -> ~0.5 MB zipped, needs the .NET 8 Desktop Runtime installed
+      #   self-contained      -> ~65 MB zipped, single file, no prerequisites at all
+      # Sizes measured from the v0.6.0 assets. They drift as the SDK changes, so treat them as
+      # indicative and re-check against a real release rather than trusting the comment.
       - name: Publish framework-dependent
         run: >
           dotnet publish src/WinChime.App
