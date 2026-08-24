@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using WinChime.Core.Cursors;
 using WinChime.Core.Elevation;
@@ -32,6 +33,11 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<SoundEvent> _events = new();
     private readonly ObservableCollection<BackupManifest> _backupItems = new();
+
+    private readonly AccentColorService _accent = new();
+
+    /// <summary>Single-step undo for the accent, same shape as the cursor undo.</summary>
+    private Dictionary<string, string>? _accentUndo;
 
     private readonly CursorSchemeService _cursors = new();
 
@@ -82,6 +88,8 @@ public partial class MainWindow : Window
             WallpaperStyleCombo.Items.Add(style.ToString());
         WallpaperStyleCombo.SelectedIndex = 0;
 
+        BuildAccentPresets();
+
         ChimeDelaySlider.ValueChanged += (_, _) => UpdateChimeDelayText();
         UpdateChimeDelayText();
 
@@ -96,6 +104,7 @@ public partial class MainWindow : Window
         ReloadCursors();
         RefreshStartupTab();
         RefreshDesktopTab();
+        RefreshAccent();
         RefreshSystemTab();
         RefreshBackups();
         StartRegistryWatcher();
@@ -1086,6 +1095,95 @@ public partial class MainWindow : Window
     }
 
     // ================================================================= desktop ==
+
+    // ================================================================== accent ==
+
+    private void BuildAccentPresets()
+    {
+        foreach (var preset in AccentColorService.Presets)
+        {
+            var swatch = new Border
+            {
+                Width = 26,
+                Height = 26,
+                Margin = new Thickness(0, 0, 4, 4),
+                BorderBrush = Brushes.Gray,
+                BorderThickness = new Thickness(1),
+                Background = ToBrush(preset),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                ToolTip = preset.Hex,
+            };
+
+            // Selecting a swatch only fills the box. Applying stays an explicit action, so a
+            // stray click cannot repaint the desktop.
+            swatch.MouseLeftButtonUp += (_, _) => AccentHexBox.Text = preset.Hex;
+
+            AccentPresets.Children.Add(swatch);
+        }
+    }
+
+    private static System.Windows.Media.Brush ToBrush(AccentRgb colour) =>
+        new SolidColorBrush(System.Windows.Media.Color.FromRgb(colour.R, colour.G, colour.B));
+
+    private void AccentHex_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (AccentPreview is null) return;
+
+        if (AccentRgb.TryParse(AccentHexBox.Text, out var colour))
+        {
+            AccentPreview.Background = ToBrush(colour);
+            AccentPreview.BorderBrush = Brushes.Gray;
+        }
+        else
+        {
+            // Flag it in the preview rather than popping a dialog on every keystroke.
+            AccentPreview.BorderBrush = Brushes.OrangeRed;
+        }
+    }
+
+    private void RefreshAccent()
+    {
+        var state = _accent.GetState();
+
+        AccentCurrentText.Text = state.Accent is { } current
+            ? $"currently {current.Hex}"
+            : "Windows has not recorded an accent colour";
+
+        if (state.Accent is { } accent) AccentHexBox.Text = accent.Hex;
+
+        AccentPrevalenceCheck.IsChecked = state.ColorPrevalence;
+        AccentUndoButton.IsEnabled = _accentUndo is not null;
+    }
+
+    private void ApplyAccent_Click(object sender, RoutedEventArgs e)
+    {
+        if (!AccentRgb.TryParse(AccentHexBox.Text, out var colour))
+        {
+            MessageBox.Show(
+                "Enter a colour as #RRGGBB, for example #0078D7, or click one of the swatches.",
+                "That is not a colour",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+
+            return;
+        }
+
+        _accentUndo = _accent.CaptureAssignments();
+
+        Report(_accent.Apply(colour, AccentPrevalenceCheck.IsChecked == true));
+        RefreshAccent();
+    }
+
+    private void UndoAccent_Click(object sender, RoutedEventArgs e)
+    {
+        if (_accentUndo is null) return;
+
+        var result = _accent.RestoreAssignments(_accentUndo);
+        SetStatus(result.Success ? "Accent colour restored." : result.Message);
+
+        _accentUndo = null;
+        RefreshAccent();
+    }
 
     private void RefreshDesktopTab()
     {

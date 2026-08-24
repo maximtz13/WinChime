@@ -129,4 +129,25 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true, EntryPoint = "SystemParametersInfoW")]
     public static extern bool SystemParametersInfoNoParam(
         uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
+
+    // ---- user32: broadcasting a settings change ---------------------------------
+    // Writing the accent registry values changes nothing on screen until running
+    // applications are told to re-read them.
+    public static readonly IntPtr HwndBroadcast = new(0xFFFF);
+
+    public const uint WM_SETTINGCHANGE = 0x001A;
+    public const uint WM_DWMCOLORIZATIONCOLORCHANGED = 0x0320;
+
+    /// <summary>Do not wait on a window that has stopped responding.</summary>
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint msg,
+        IntPtr wParam,
+        string? lParam,
+        uint flags,
+        uint timeoutMilliseconds,
+        out UIntPtr result);
 }
