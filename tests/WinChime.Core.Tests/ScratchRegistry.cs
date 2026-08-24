@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using WinChime.Core.Cursors;
 using WinChime.Core.Sounds;
 
 namespace WinChime.Core.Tests;
@@ -73,6 +74,55 @@ public sealed class ScratchRegistry : IDisposable
             $@"{Root}\Schemes\Apps\{appKey}\{eventKey}\{schemeKey}");
 
         key?.SetValue(string.Empty, value, KindFor(value));
+    }
+
+    // ------------------------------------------------------------------ cursors --
+
+    /// <summary>Where the scratch cursor values live, mirroring Control Panel\Cursors.</summary>
+    public string CursorsRoot => $@"{Root}\Cursors";
+
+    /// <summary>
+    /// A cursor service pointed entirely at scratch keys, including the system scheme
+    /// location. System schemes normally live in HKLM, which tests cannot write, so they are
+    /// redirected into HKCU here to make scheme behaviour testable at all.
+    /// </summary>
+    public CursorSchemeService CreateCursorService() => new(
+        CursorsRoot,
+        userSchemes: new SchemeLocation(RegistryHive.CurrentUser, $@"{CursorsRoot}\Schemes"),
+        systemSchemes: new SchemeLocation(RegistryHive.CurrentUser, $@"{Root}\SystemCursorSchemes"));
+
+    public void SeedCursor(string roleKey, string path)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(CursorsRoot);
+        key?.SetValue(roleKey, path, KindFor(path));
+    }
+
+    public void SeedActiveCursorScheme(string name)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(CursorsRoot);
+        key?.SetValue(string.Empty, name, RegistryValueKind.String);
+    }
+
+    /// <summary>Seeds a scheme as the comma-separated positional string Windows uses.</summary>
+    public void SeedCursorScheme(string name, IEnumerable<string> orderedPaths, bool systemScheme = false)
+    {
+        var path = systemScheme ? $@"{Root}\SystemCursorSchemes" : $@"{CursorsRoot}\Schemes";
+        var value = string.Join(",", orderedPaths);
+
+        using var key = Registry.CurrentUser.CreateSubKey(path);
+        key?.SetValue(name, value, KindFor(value));
+    }
+
+    public string? ReadCursor(string roleKey)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(CursorsRoot);
+        return key?.GetValue(roleKey, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+    }
+
+    public object? ReadCursorRawValue(string valueName)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(CursorsRoot);
+        return key?.GetValue(valueName);
     }
 
     // ------------------------------------------------------------------ reading --

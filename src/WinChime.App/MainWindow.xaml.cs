@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
+using WinChime.Core.Cursors;
 using WinChime.Core.Elevation;
 using WinChime.Core.Interop;
 using WinChime.Core.Model;
@@ -31,6 +32,14 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<SoundEvent> _events = new();
     private readonly ObservableCollection<BackupManifest> _backupItems = new();
+
+    private readonly CursorSchemeService _cursors = new();
+
+    private readonly ObservableCollection<CursorEntry> _cursorEntries = new();
+
+    /// <summary>Single-step undo for cursors: every change rewrites the same set of values.</summary>
+    private Dictionary<string, string>? _cursorUndo;
+    private string? _cursorUndoDescription;
 
     private readonly SoundEditHistory _history = new();
 
@@ -67,6 +76,7 @@ public partial class MainWindow : Window
         _eventView.Filter = FilterEvent;
 
         BackupList.ItemsSource = _backupItems;
+        CursorList.ItemsSource = _cursorEntries;
 
         foreach (var style in Enum.GetValues<WallpaperStyle>())
             WallpaperStyleCombo.Items.Add(style.ToString());
@@ -82,6 +92,8 @@ public partial class MainWindow : Window
     {
         ReloadSchemes();
         ReloadEvents();
+        ReloadCursorSchemes();
+        ReloadCursors();
         RefreshStartupTab();
         RefreshDesktopTab();
         RefreshSystemTab();
@@ -690,6 +702,195 @@ public partial class MainWindow : Window
         ReloadEvents();
         ReloadSchemes();
         RefreshBackups();
+    }
+
+    // ================================================================= cursors ==
+
+    private const string CursorFilter =
+        "Cursor files (*.cur;*.ani)|*.cur;*.ani|Static cursor (*.cur)|*.cur|Animated cursor (*.ani)|*.ani";
+
+    private void ReloadCursors()
+    {
+        var previous = (CursorList.SelectedItem as CursorEntry)?.RoleKey;
+
+        _cursorEntries.Clear();
+        foreach (var entry in _cursors.LoadCursors()) _cursorEntries.Add(entry);
+
+        if (previous is not null)
+        {
+            CursorList.SelectedItem = _cursorEntries.FirstOrDefault(
+                c => c.RoleKey.Equals(previous, StringComparison.OrdinalIgnoreCase));
+        }
+
+        CursorUndoButton.IsEnabled = _cursorUndo is not null;
+        UpdateCursorDetails();
+    }
+
+    private void ReloadCursorSchemes()
+    {
+        var active = _cursors.GetActiveSchemeName();
+
+        var schemes = _cursors.ListSchemes().ToList();
+
+        // "Windows Default" is a name Windows records as active without storing a scheme
+        // string for it, so it matches nothing in the list. Falling back to index 0 would
+        // then display a scheme that is not applied, which is worse than showing nothing.
+        // Surface the active name instead, even when there is no stored definition behind it.
+        if (!schemes.Any(s => s.Name.Equals(active, StringComparison.OrdinalIgnoreCase)))
+            schemes.Insert(0, new CursorSchemeItem(active, IsSystemScheme: true));
+
+        CursorSchemeCombo.Items.Clear();
+        foreach (var scheme in schemes)
+        {
+            CursorSchemeCombo.Items.Add(scheme);
+            if (scheme.Name.Equals(active, StringComparison.OrdinalIgnoreCase))
+                CursorSchemeCombo.SelectedItem = scheme;
+        }
+    }
+
+    private void CursorList_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateCursorDetails();
+
+    private void UpdateCursorDetails()
+    {
+        if (CursorList.SelectedItem is not CursorEntry entry)
+        {
+            CursorSelectedTitle.Text = "Nothing selected";
+            CursorSelectedPath.Text = "";
+            CursorInfoText.Text = "Select a cursor to inspect its file.";
+            CursorWarnings.Text = "";
+            return;
+        }
+
+        CursorSelectedTitle.Text = $"{entry.DisplayName}  ({entry.RoleKey})";
+        CursorSelectedPath.Text = entry.CurrentPath ?? "(drawn by Windows)";
+        CursorWarnings.Text = "";
+
+        if (entry.IsSystemDrawn)
+        {
+            CursorInfoText.Text = "Windows draws this cursor itself. That is a normal setting, not a missing file.";
+            return;
+        }
+
+        if (entry.IsBroken)
+        {
+            CursorInfoText.Text = "The assigned file no longer exists.";
+            CursorWarnings.Text = "Windows falls back to the default pointer without reporting anything, so this "
+                                  + "looks like nothing happened. Pick a new file or switch it to system.";
+            return;
+        }
+
+        var info = CursorFile.Inspect(entry.CurrentPath!);
+        CursorInfoText.Text = info.Summary;
+        CursorWarnings.Text = string.Join(Environment.NewLine + Environment.NewLine, info.Warnings);
+    }
+
+    /// <summary>
+    /// Cursors get a single-step undo rather than the full history the sounds have. Every
+    /// change here rewrites the same seventeen values, so a snapshot before each change is
+    /// both simpler and sufficient.
+    /// </summary>
+    private void RememberCursorsForUndo(string description)
+    {
+        _cursorUndo = _cursors.CaptureAssignments();
+        _cursorUndoDescription = description;
+        CursorUndoButton.IsEnabled = true;
+        CursorUndoButton.ToolTip = $"Undo: {description}";
+    }
+
+    private void UndoCursor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cursorUndo is null) return;
+
+        var result = _cursors.RestoreAssignments(_cursorUndo);
+        SetStatus(result.Success ? $"Undone: {_cursorUndoDescription}" : result.Message);
+
+        _cursorUndo = null;
+        _cursorUndoDescription = null;
+        CursorUndoButton.ToolTip = null;
+
+        ReloadCursors();
+        ReloadCursorSchemes();
+    }
+
+    private void BrowseCursor_Click(object sender, RoutedEventArgs e)
+    {
+        if (CursorList.SelectedItem is not CursorEntry entry)
+        {
+            SetStatus("Select a cursor first.");
+            return;
+        }
+
+        var path = PickFile($"Choose a cursor for {entry.DisplayName}", CursorFilter);
+        if (path is null) return;
+
+        var info = CursorFile.Inspect(path);
+
+        // Refused rather than warned-and-allowed: unlike a non-PCM sound, there is nothing
+        // to convert here, and assigning it would just silently do nothing.
+        if (!info.IsValid)
+        {
+            MessageBox.Show(info.Error, "Not a usable cursor file", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        RememberCursorsForUndo($"Set {entry.DisplayName}");
+        Report(_cursors.SetCursor(entry.RoleKey, path));
+
+        ReloadCursors();
+        ReloadCursorSchemes();
+    }
+
+    private void SystemCursor_Click(object sender, RoutedEventArgs e)
+    {
+        if (CursorList.SelectedItem is not CursorEntry entry) return;
+
+        RememberCursorsForUndo($"System default for {entry.DisplayName}");
+        Report(_cursors.SetCursor(entry.RoleKey, null));
+
+        ReloadCursors();
+        ReloadCursorSchemes();
+    }
+
+    private void ApplyCursorScheme_Click(object sender, RoutedEventArgs e)
+    {
+        if (CursorSchemeCombo.SelectedItem is not CursorSchemeItem scheme) return;
+
+        RememberCursorsForUndo($"Apply cursor scheme {scheme.Name}");
+        Report(_cursors.ApplyScheme(scheme.Name));
+
+        ReloadCursors();
+        ReloadCursorSchemes();
+    }
+
+    private void SaveCursorScheme_Click(object sender, RoutedEventArgs e)
+    {
+        var name = PromptDialog.Ask(this, "Name for this cursor scheme:", "Save cursor scheme", "My cursors");
+        if (name is null) return;
+
+        Report(_cursors.SaveCurrentAsScheme(name));
+        ReloadCursorSchemes();
+    }
+
+    private void DeleteCursorScheme_Click(object sender, RoutedEventArgs e)
+    {
+        if (CursorSchemeCombo.SelectedItem is not CursorSchemeItem scheme) return;
+
+        if (scheme.IsSystemScheme)
+        {
+            SetStatus($"{scheme.Name} ships with Windows and cannot be deleted.");
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Delete the cursor scheme \"{scheme.Name}\"?\n\nThe cursors currently in use are not changed.",
+            "Delete cursor scheme",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        Report(_cursors.DeleteScheme(scheme.Name));
+        ReloadCursorSchemes();
     }
 
     // ================================================================= startup ==
