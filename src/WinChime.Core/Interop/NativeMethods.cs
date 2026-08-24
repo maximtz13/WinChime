@@ -180,4 +180,103 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetWindowPos(
         IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    // ---- user32 + gdi32: rasterising a cursor ------------------------------------
+    // Used to draw a .cur or .ani into a bitmap for the preview. There is no managed way to
+    // do this: WPF cannot decode either format, and the animated one has no single image to
+    // decode anyway. DrawIconEx is the only API that will render a chosen animation step.
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct IconInfo
+    {
+        /// <summary>Non-zero for an icon, zero for a cursor. Declared as int to stay blittable.</summary>
+        public int fIcon;
+
+        public int xHotspot;
+        public int yHotspot;
+        public IntPtr hbmMask;
+        public IntPtr hbmColor;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BitmapHeader
+    {
+        public int bmType;
+        public int bmWidth;
+        public int bmHeight;
+        public int bmWidthBytes;
+        public ushort bmPlanes;
+        public ushort bmBitsPixel;
+        public IntPtr bmBits;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BitmapInfoHeader
+    {
+        public int biSize;
+        public int biWidth;
+
+        /// <summary>Negative for a top-down bitmap, which avoids flipping the rows by hand.</summary>
+        public int biHeight;
+
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
+    public const uint BI_RGB = 0;
+    public const uint DIB_RGB_COLORS = 0;
+
+    public const uint DI_MASK = 0x0001;
+    public const uint DI_IMAGE = 0x0002;
+    public const uint DI_NORMAL = DI_MASK | DI_IMAGE;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "LoadCursorFromFileW")]
+    public static extern IntPtr LoadCursorFromFile(string lpFileName);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DestroyCursor(IntPtr hCursor);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetIconInfo(IntPtr hIcon, out IconInfo piconinfo);
+
+    /// <param name="istepIfAniCur">
+    /// Animation step to draw. Windows resolves the seq chunk itself, so this indexes steps
+    /// rather than frames.
+    /// </param>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DrawIconEx(
+        IntPtr hdc, int xLeft, int yTop, IntPtr hIcon,
+        int cxWidth, int cyWidth, uint istepIfAniCur,
+        IntPtr hbrFlickerFreeDraw, uint diFlags);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    public static extern IntPtr CreateDIBSection(
+        IntPtr hdc, ref BitmapInfoHeader pbmi, uint usage,
+        out IntPtr ppvBits, IntPtr hSection, uint offset);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    public static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteObject(IntPtr ho);
+
+    [DllImport("gdi32.dll", SetLastError = true, EntryPoint = "GetObjectW")]
+    public static extern int GetObject(IntPtr h, int c, ref BitmapHeader pv);
 }

@@ -215,6 +215,52 @@
                                            Margin="0,0,0,4" Text="Nothing selected" />
                                 <TextBlock x:Name="CursorSelectedPath" Style="{StaticResource Hint}" />
 
+                                <!--
+                                    Actual size on the left so the pointer can be judged as it
+                                    will really look, magnified on the right so the shape and
+                                    the hotspot can be seen. Animated cursors animate.
+                                -->
+                                <Border x:Name="CursorPreviewCard" Style="{StaticResource InfoCard}"
+                                        Padding="14" Visibility="Collapsed">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <Border Style="{StaticResource PreviewPlate}"
+                                                    Width="52" Height="52" Margin="0,0,14,0">
+                                                <Image x:Name="CursorPreviewActual" Stretch="None"
+                                                       RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                                            </Border>
+
+                                            <Border Style="{StaticResource PreviewPlate}"
+                                                    Width="116" Height="116">
+                                                <Grid>
+                                                    <Image x:Name="CursorPreviewZoom" Stretch="Uniform"
+                                                           RenderOptions.BitmapScalingMode="NearestNeighbor" />
+
+                                                    <!--
+                                                        Two hairlines rather than a dot: the
+                                                        hotspot is a single pixel, and a marker
+                                                        big enough to see would cover the thing
+                                                        it is pointing at.
+                                                    -->
+                                                    <Canvas x:Name="CursorHotspotLayer" IsHitTestVisible="False"
+                                                            Visibility="Collapsed">
+                                                        <Line x:Name="HotspotVertical" Y1="0" Y2="116"
+                                                              Stroke="#E0FF3B30" StrokeThickness="1" />
+                                                        <Line x:Name="HotspotHorizontal" X1="0" X2="116"
+                                                              Stroke="#E0FF3B30" StrokeThickness="1" />
+                                                    </Canvas>
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <TextBlock x:Name="CursorPreviewCaption" Margin="0,10,0,0"
+                                                   HorizontalAlignment="Center" TextWrapping="Wrap"
+                                                   TextAlignment="Center"
+                                                   FontSize="{DynamicResource Font.Caption}"
+                                                   Foreground="{DynamicResource Text.Tertiary}" />
+                                    </StackPanel>
+                                </Border>
+
                                 <Border Style="{StaticResource InfoCard}">
                                     <TextBlock x:Name="CursorInfoText" TextWrapping="Wrap"
                                                Foreground="{DynamicResource Text.Secondary}"

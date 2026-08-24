@@ -13,6 +13,39 @@ public sealed record CursorInfo(
     IReadOnlyList<string> Warnings,
     string? Error)
 {
+    /// <summary>
+    /// Length of the animation sequence, which is not the same as the frame count: a seq
+    /// chunk can play twelve steps out of six frames, and it is steps that DrawIconEx indexes.
+    /// One for a static cursor.
+    /// </summary>
+    public int Steps { get; init; } = 1;
+
+    /// <summary>
+    /// Default step duration in jiffies (sixtieths of a second), from the anih header. Zero
+    /// when the file does not say, which real files sometimes do not.
+    /// </summary>
+    public int DisplayRateJiffies { get; init; }
+
+    /// <summary>
+    /// Per-step durations from the optional rate chunk, in jiffies. Empty when the file has
+    /// no rate chunk, in which case every step lasts <see cref="DisplayRateJiffies"/>.
+    /// </summary>
+    public IReadOnlyList<int> StepRates { get; init; } = Array.Empty<int>();
+
+    /// <summary>
+    /// How long a given step should be shown. Falls back through the rate chunk, then the
+    /// header rate, then a sixth of a second, which is what Windows uses when a file is
+    /// silent on the question.
+    /// </summary>
+    public TimeSpan DurationOf(int step)
+    {
+        var jiffies = step >= 0 && step < StepRates.Count ? StepRates[step] : DisplayRateJiffies;
+
+        if (jiffies <= 0) jiffies = 10;
+
+        return TimeSpan.FromSeconds(jiffies / 60.0);
+    }
+
     public string Summary => IsValid
         ? IsAnimated
             ? $"{FormatName}, {Width}x{Height}, {Frames} frame(s)"
@@ -112,6 +145,12 @@ public static class CursorFile
     {
         stream.Position = 12;
 
+        var found = false;
+        int frames = 0, steps = 0, width = 0, height = 0, displayRate = 0;
+        var stepRates = Array.Empty<int>();
+
+        // Scans the whole file rather than stopping at anih, because the optional rate chunk
+        // follows it and carries the per-step timings the preview animates on.
         while (stream.Position + 8 <= stream.Length)
         {
             var chunkId = new string(reader.ReadChars(4));
@@ -121,17 +160,24 @@ public static class CursorFile
             if (chunkId == "anih" && chunkSize >= 36)
             {
                 reader.ReadUInt32();                        // cbSize
-                var frames = (int)reader.ReadUInt32();
-                var steps = (int)reader.ReadUInt32();
-                var width = (int)reader.ReadUInt32();
-                var height = (int)reader.ReadUInt32();
+                frames = (int)reader.ReadUInt32();
+                steps = (int)reader.ReadUInt32();
+                width = (int)reader.ReadUInt32();
+                height = (int)reader.ReadUInt32();
+                reader.ReadUInt32();                        // bit count
+                reader.ReadUInt32();                        // planes
+                displayRate = (int)reader.ReadUInt32();     // jiffies per step
 
-                var warnings = new List<string>();
-                if (frames == 0) warnings.Add("Animated cursor declares zero frames; it will not animate.");
-                if (steps > 1 && frames <= 1) warnings.Add("Animation sequence is longer than the frame count.");
+                found = true;
+            }
+            else if (chunkId == "rate" && chunkSize >= 4)
+            {
+                var count = (int)(chunkSize / 4);
+                var rates = new int[count];
 
-                return new CursorInfo(
-                    true, "Animated cursor", true, width, height, frames, fileBytes, warnings, null);
+                for (var i = 0; i < count; i++) rates[i] = (int)reader.ReadUInt32();
+
+                stepRates = rates;
             }
 
             var next = chunkStart + chunkSize + (chunkSize % 2);   // chunks are word-aligned
@@ -140,7 +186,18 @@ public static class CursorFile
             stream.Position = next;
         }
 
-        return Invalid("Animated cursor has no anih header chunk.");
+        if (!found) return Invalid("Animated cursor has no anih header chunk.");
+
+        var warnings = new List<string>();
+        if (frames == 0) warnings.Add("Animated cursor declares zero frames; it will not animate.");
+        if (steps > 1 && frames <= 1) warnings.Add("Animation sequence is longer than the frame count.");
+
+        return new CursorInfo(true, "Animated cursor", true, width, height, frames, fileBytes, warnings, null)
+        {
+            Steps = steps > 0 ? steps : Math.Max(frames, 1),
+            DisplayRateJiffies = displayRate,
+            StepRates = stepRates,
+        };
     }
 
     private static CursorInfo Invalid(string error) =>
