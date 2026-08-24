@@ -42,6 +42,18 @@ public sealed class CursorEntry
     /// </summary>
     public string StatusText => IsBroken ? "Missing" : IsSystemDrawn ? "System" : "Assigned";
 
+    /// <summary>
+    /// What a screen reader announces when focus reaches this row.
+    ///
+    /// A list row has no automation name of its own and falls back to ToString, so without
+    /// this the Cursors tab reads as seventeen repetitions of
+    /// "WinChime.Core.Cursors.CursorEntry".
+    ///
+    /// The display name alone, rather than the whole row: the grid cells are exposed
+    /// separately and already carry the role, the file and the status.
+    /// </summary>
+    public override string ToString() => DisplayName;
+
     private static string SafeFileName(string path)
     {
         try { return Path.GetFileName(path); } catch { return path; }

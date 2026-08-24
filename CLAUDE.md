@@ -140,6 +140,13 @@ Popups (`ToolTip`, the ComboBox dropdown, `ContextMenu`) render outside the wind
 tree and inherit nothing from it. They must be styled from `Application.Resources` or they stay
 Aero2-light in dark mode.
 
+**A type shown in a `ListView` row needs a `ToString()` override.** A row has no automation
+name of its own, so UI Automation falls back to `ToString()` — and the default is the type
+name, which means a screen reader reads "WinChime.Core.Model.SoundEvent" seventy-two times.
+`SoundEvent` and `CursorEntry` override it; anything new that lands in a list must too. Keep it
+to the item's identity, since the grid cells are exposed separately, and avoid punctuation that
+gets read aloud (this is why neither uses `DisplayLabel`, whose bullet the CLI also avoids).
+
 **A retemplated `TabControl` must keep `x:Name="PART_SelectedContentHost"` on the content
 presenter.** `TabControlAutomationPeer` finds the selected tab's content by looking that name
 up in the template. Without it the content renders perfectly and every control inside it is
@@ -155,7 +162,7 @@ opposite. The comments carry the measurements.
 
 ## Current state
 
-365 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
+373 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
 
 Never exercised: applying a *new* accent colour (write path is test-covered, but it repaints
 the desktop so it was left alone). Everything else has run at least once.
