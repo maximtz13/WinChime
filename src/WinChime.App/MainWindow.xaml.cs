@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WinChime.Core.Cursors;
 using WinChime.Core.Elevation;
@@ -204,6 +205,7 @@ public partial class MainWindow : Window
         {
             _refreshTimer?.Stop();
             _watcher?.Dispose();
+            StopCursorPreview();
         };
     }
 
@@ -820,6 +822,7 @@ public partial class MainWindow : Window
             CursorSelectedPath.Text = "";
             CursorInfoText.Text = "Select a cursor to inspect its file.";
             CursorWarnings.Text = "";
+            ShowCursorPreview(null);
             return;
         }
 
@@ -830,6 +833,7 @@ public partial class MainWindow : Window
         if (entry.IsSystemDrawn)
         {
             CursorInfoText.Text = "Windows draws this cursor itself. That is a normal setting, not a missing file.";
+            ShowCursorPreview(null);
             return;
         }
 
@@ -838,12 +842,164 @@ public partial class MainWindow : Window
             CursorInfoText.Text = "The assigned file no longer exists.";
             CursorWarnings.Text = "Windows falls back to the default pointer without reporting anything, so this "
                                   + "looks like nothing happened. Pick a new file or switch it to system.";
+            ShowCursorPreview(null);
             return;
         }
 
         var info = CursorFile.Inspect(entry.CurrentPath!);
-        CursorInfoText.Text = info.Summary;
         CursorWarnings.Text = string.Join(Environment.NewLine + Environment.NewLine, info.Warnings);
+
+        var preview = ShowCursorPreview(entry.CurrentPath);
+
+        // The header is a poor source for the size and the preview is an authoritative one.
+        // A .cur holds several images and only the first is read; an animated cursor routinely
+        // declares 0x0 in its anih chunk and expects the reader to take the size from the
+        // frames inside it, which is why this used to say "Animated cursor, 0x0" while the
+        // picture beside it was plainly 48 pixels across. Once the cursor has actually been
+        // rendered, the size it rendered at is the one worth reporting: it is what Windows
+        // will really draw, at the pointer size this machine is set to.
+        CursorInfoText.Text = preview is null
+            ? info.Summary
+            : info.IsAnimated
+                ? $"{info.FormatName}, drawn at {preview.Width}×{preview.Height}, {info.Frames} frame(s)"
+                : $"{info.FormatName}, drawn at {preview.Width}×{preview.Height}";
+    }
+
+    // ------------------------------------------------------------ live preview ==
+
+    private CursorPreview? _preview;
+    private int _previewStep;
+    private DispatcherTimer? _previewTimer;
+
+    /// <summary>
+    /// Loads a cursor and shows it, animating if it has more than one step.
+    ///
+    /// Passing null hides the panel, which covers all three cases where there is nothing to
+    /// draw: no selection, a role Windows draws itself, and a file that has gone missing.
+    /// </summary>
+    /// <summary>Returns the loaded preview, or null when there was nothing to show.</summary>
+    private CursorPreview? ShowCursorPreview(string? path)
+    {
+        StopCursorPreview();
+
+        if (path is null)
+        {
+            CursorPreviewCard.Visibility = Visibility.Collapsed;
+            return null;
+        }
+
+        var preview = CursorImage.Load(path);
+
+        if (!preview.IsValid)
+        {
+            // The file is assigned and readable enough to have got here, so a render failure
+            // is worth showing rather than silently leaving an empty box.
+            CursorPreviewCard.Visibility = Visibility.Collapsed;
+            CursorWarnings.Text = string.IsNullOrEmpty(CursorWarnings.Text)
+                ? preview.Error
+                : CursorWarnings.Text + Environment.NewLine + Environment.NewLine + preview.Error;
+
+            return null;
+        }
+
+        _preview = preview;
+        _previewStep = 0;
+
+        CursorPreviewCard.Visibility = Visibility.Visible;
+        DrawPreviewStep();
+        PlaceHotspotMarker();
+
+        // The size belongs to the line below the card, which says what Windows draws. Here the
+        // useful facts are the ones only the picture can show: where the hotspot is, and
+        // whether it moves.
+        CursorPreviewCaption.Text = preview.IsAnimated
+            ? $"hotspot {preview.HotspotX},{preview.HotspotY}  ·  {preview.Frames.Count} steps"
+            : $"hotspot {preview.HotspotX},{preview.HotspotY}";
+
+        if (preview.IsAnimated) StartCursorAnimation();
+
+        return preview;
+    }
+
+    private void DrawPreviewStep()
+    {
+        if (_preview is null) return;
+
+        var frame = _preview.Frames[_previewStep];
+
+        // Pbgra32 because DrawIconEx composites onto a transparent surface, which leaves the
+        // colour already multiplied by the alpha.
+        var bitmap = BitmapSource.Create(
+            _preview.Width, _preview.Height, 96, 96,
+            PixelFormats.Pbgra32, null, frame.Bgra, _preview.Width * 4);
+
+        bitmap.Freeze();
+
+        CursorPreviewActual.Source = bitmap;
+        CursorPreviewZoom.Source = bitmap;
+    }
+
+    /// <summary>
+    /// Steps are timed individually rather than on one interval. An animated cursor can give
+    /// each step its own duration in the rate chunk, and the Windows busy pointer does.
+    /// </summary>
+    private void StartCursorAnimation()
+    {
+        if (_preview is null) return;
+
+        _previewTimer = new DispatcherTimer { Interval = _preview.Frames[0].Duration };
+
+        _previewTimer.Tick += (_, _) =>
+        {
+            if (_preview is null) return;
+
+            _previewStep = (_previewStep + 1) % _preview.Frames.Count;
+
+            DrawPreviewStep();
+            _previewTimer!.Interval = _preview.Frames[_previewStep].Duration;
+        };
+
+        _previewTimer.Start();
+    }
+
+    private void StopCursorPreview()
+    {
+        _previewTimer?.Stop();
+        _previewTimer = null;
+        _preview = null;
+        _previewStep = 0;
+    }
+
+    /// <summary>
+    /// Positions the crosshair over the magnified view. The cursor is drawn with Uniform
+    /// stretch into a square plate, so the scale is the plate divided by the larger dimension.
+    /// </summary>
+    private void PlaceHotspotMarker()
+    {
+        if (_preview is null || _preview.Width <= 0 || _preview.Height <= 0)
+        {
+            CursorHotspotLayer.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        const double plate = 116;
+
+        var scale = plate / Math.Max(_preview.Width, _preview.Height);
+
+        var offsetX = (plate - _preview.Width * scale) / 2;
+        var offsetY = (plate - _preview.Height * scale) / 2;
+
+        // Half a pixel over, so the line sits through the middle of the hotspot pixel rather
+        // than along its edge.
+        var x = offsetX + (_preview.HotspotX + 0.5) * scale;
+        var y = offsetY + (_preview.HotspotY + 0.5) * scale;
+
+        HotspotVertical.X1 = x;
+        HotspotVertical.X2 = x;
+        HotspotHorizontal.Y1 = y;
+        HotspotHorizontal.Y2 = y;
+
+        CursorHotspotLayer.Visibility = Visibility.Visible;
     }
 
     /// <summary>

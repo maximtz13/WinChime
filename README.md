@@ -206,6 +206,47 @@ Status reads **Assigned** rather than "Custom". Windows records no per-role defa
 cursors, unlike sounds, so there is no way to distinguish a file the user chose from one
 that came with the active scheme, and claiming otherwise would mislabel every stock cursor.
 
+### The live preview — `CursorImage`
+
+Selecting a cursor shows it: at the size Windows will actually draw it, magnified beside that
+with the hotspot marked, and animating if it is an `.ani`.
+
+There is no managed route to this. WPF decodes neither `.cur` nor `.ani`, and an animated
+cursor has no single image to decode anyway — its frames live in a RIFF container, and
+`DrawIconEx` is the only API that will render a chosen step. So the cursor is loaded through
+`LoadCursorFromFile` and drawn into a top-down 32-bit DIB, one step at a time, and Core hands
+back raw premultiplied BGRA rather than any image type it would need a UI framework to name.
+
+**Alpha is the whole problem.** A modern 32-bit cursor carries its own alpha and draws
+correctly in one pass. A legacy cursor is a colour bitmap plus a 1-bit AND mask, and GDI
+signals transparency by leaving those destination pixels *untouched* — so drawing onto a
+transparent surface yields an image whose alpha is zero everywhere. A perfectly invisible
+preview, with no error to explain it. The result is therefore checked, and anything that came
+back empty is drawn again in two passes and recombined by hand.
+
+That fallback was not enough either, and the case it missed is a good one. A legacy cursor
+composites as `screen = (screen AND mask) XOR image`, which is four cases rather than two: the
+combination `AND 1, XOR 1` **inverts** the screen. That is not a curiosity — it is how the
+classic text I-beam works, and Windows still ships it. `beam_l.cur` has an all-ones mask and
+carries its entire shape in the XOR bits, so treating "AND 1" as simply transparent renders it
+completely invisible. An inverting pixel has no colour of its own, so it is drawn black, which
+is what inverting over a light surface looks like.
+
+None of this was found by reading the spec. It was found by a test that renders **every cursor
+Windows ships** and fails if any of them comes back blank, which is the only reliable way to
+catch a bug whose symptom is that nothing appears.
+
+The preview sits on a deliberately theme-independent mid-grey checkerboard. Most cursors are
+white with a black outline and an inverting one is drawn black, so a light backdrop hides half
+of them and a dark backdrop hides the other half; mid grey carries both, which is why image
+editors use it.
+
+One useful side effect: the rendered size is more trustworthy than the header. A `.cur` holds
+several images and only the first is read, and an `.ani` routinely declares `0x0` and expects
+the reader to take the size from its frames. Once the cursor has actually been rendered, the
+details panel reports *that* size — the one Windows will really draw, at this machine's
+pointer size.
+
 ### Cursor packs — `CursorPackService`
 
 A cursor scheme travels worse than a sound scheme. Sounds at least have `%SystemRoot%`

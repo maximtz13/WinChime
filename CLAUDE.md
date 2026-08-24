@@ -95,6 +95,11 @@ Each of these was derived experimentally and is documented in the relevant sourc
   positional string, at which point it splits in two and shifts every later role by one. This
   could not arise while paths only came from a local file picker; packs bring filenames chosen
   on someone else's machine. `CursorPackService` strips commas, `SaveScheme` refuses them.
+- **A legacy cursor can be an *inverting* one.** The composite is
+  `screen = (screen AND mask) XOR image`, so `AND 1, XOR 1` inverts rather than being
+  transparent. The shipped text I-beam (`beam_l.cur`) is entirely made of inverting pixels, so
+  any code treating "AND 1" as transparent renders it invisible. `CursorImage` draws those
+  black. Never assume a cursor is either alpha-blended or a simple mask.
 - **Cursor paths are stored *expanded* in the registry**, unlike sound paths. Reading
   `Control Panel\Cursors` gives `C:\WINDOWS\cursors\aero_arrow.cur`, not `%SystemRoot%\...`.
   Anything that has to travel between machines must collapse them back
@@ -135,6 +140,14 @@ Popups (`ToolTip`, the ComboBox dropdown, `ContextMenu`) render outside the wind
 tree and inherit nothing from it. They must be styled from `Application.Resources` or they stay
 Aero2-light in dark mode.
 
+**A retemplated `TabControl` must keep `x:Name="PART_SelectedContentHost"` on the content
+presenter.** `TabControlAutomationPeer` finds the selected tab's content by looking that name
+up in the template. Without it the content renders perfectly and every control inside it is
+invisible to UI Automation — a screen reader sees the navigation and the status bar and
+nothing else. It shipped that way in #17 and was caught in #19 only because an automation
+script reported zero rows in a list that was plainly on screen. The same applies to any other
+`PART_` name in a template you replace.
+
 `AccentTheme` decides the accent shade. Do not "simplify" it to picking the higher-contrast
 foreground: measured across all 28 Windows swatches that picks black on 18 of them, including
 the classic `#0078D7` where the two options are within 4% and two near-identical reds end up
@@ -142,7 +155,7 @@ opposite. The comments carry the measurements.
 
 ## Current state
 
-354 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
+365 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
 
 Never exercised: applying a *new* accent colour (write path is test-covered, but it repaints
 the desktop so it was left alone). Everything else has run at least once.
@@ -151,9 +164,9 @@ Deliberately rejected, do not implement: **UEFI boot logo replacement** (require
 Secure Boot) and **patching `imageres.dll`** (reverted by `sfc` and every cumulative update).
 Both are documented in the README's Scope section with reasoning.
 
-Optional next steps, none required: a live cursor preview in the details panel, further
-personalisation surfaces, and a generated starter cursor pack to sit alongside the sound one
-in `packs/` (that would be a drawing exercise like `tools/IconGenerator`, not a code one).
+Optional next steps, none required: further personalisation surfaces, and a generated starter
+cursor pack to sit alongside the sound one in `packs/` (that would be a drawing exercise like
+`tools/IconGenerator`, not a code one).
 The real bottleneck is not code — reputation with SmartScreen and SAC only builds through
 download volume.
 

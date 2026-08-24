@@ -947,7 +947,18 @@
                                       KeyboardNavigation.TabIndex="1" />
                         </ScrollViewer>
 
-                        <ContentPresenter Grid.Column="1"
+                        <!--
+                            The PART_ name is required, not decorative. TabControlAutomationPeer
+                            locates the selected tab's content by looking this name up in the
+                            template; without it the content still renders, and every control
+                            inside it is invisible to UI Automation. That means a screen reader
+                            sees the navigation and the status bar and nothing else, and it is
+                            silent enough to survive a visual review — it was found by an
+                            automation script reporting zero rows in a list that was plainly
+                            on screen.
+                        -->
+                        <ContentPresenter x:Name="PART_SelectedContentHost"
+                                          Grid.Column="1"
                                           ContentSource="SelectedContent"
                                           Margin="{TemplateBinding Padding}" />
                     </Grid>
@@ -1190,6 +1201,44 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- ======================================================= cursor preview -->
+    <!--
+        A deliberately theme-independent mid grey, which is the one decision here worth
+        explaining. Cursors come in every colour, and two of them are awkward: most are white
+        with a black outline, and a legacy inverting cursor such as the text I-beam has no
+        colour at all and is drawn black. A light backdrop hides the black ones and a dark
+        backdrop hides the white ones, so following the theme would make the preview useless
+        in one mode or the other. Mid grey carries both, which is why image editors use it.
+    -->
+    <DrawingBrush x:Key="Preview.Checkerboard" TileMode="Tile"
+                  Viewport="0,0,10,10" ViewportUnits="Absolute" Stretch="None">
+        <DrawingBrush.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="#B0B0B0">
+                    <GeometryDrawing.Geometry>
+                        <RectangleGeometry Rect="0,0,10,10" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing Brush="#9C9C9C">
+                    <GeometryDrawing.Geometry>
+                        <GeometryGroup>
+                            <RectangleGeometry Rect="0,0,5,5" />
+                            <RectangleGeometry Rect="5,5,5,5" />
+                        </GeometryGroup>
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingBrush.Drawing>
+    </DrawingBrush>
+
+    <Style x:Key="PreviewPlate" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Preview.Checkerboard}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border.Control}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
     <!-- ============================================================ named helpers -->
