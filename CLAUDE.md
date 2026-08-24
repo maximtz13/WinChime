@@ -90,6 +90,15 @@ Each of these was derived experimentally and is documented in the relevant sourc
   extraction is safe; patching it is refused by design.
 - A cursor scheme is one comma-separated string where meaning comes from *position*. 17 roles
   then 2 metadata entries. Order verified against the shipped Windows Aero scheme.
+- **A comma anywhere in a cursor path corrupts the scheme silently.** It is a legal Windows
+  filename character, so `arrow,2.cur` is an ordinary file until it is written into the
+  positional string, at which point it splits in two and shifts every later role by one. This
+  could not arise while paths only came from a local file picker; packs bring filenames chosen
+  on someone else's machine. `CursorPackService` strips commas, `SaveScheme` refuses them.
+- **Cursor paths are stored *expanded* in the registry**, unlike sound paths. Reading
+  `Control Panel\Cursors` gives `C:\WINDOWS\cursors\aero_arrow.cur`, not `%SystemRoot%\...`.
+  Anything that has to travel between machines must collapse them back
+  (`WindowsShippedFile.Collapse`), or it works on the machine that made it and nowhere else.
 - The accent lives in `AccentPalette[3]`, **not** `DWM\AccentColor`, which can be stale. The
   shade ladder is a multiplicative scale, verified to 1/255 against a live palette.
 - `SRSetRestorePoint` returns success with sequence 0 when Windows *skipped* the request.
@@ -133,7 +142,7 @@ opposite. The comments carry the measurements.
 
 ## Current state
 
-322 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
+354 tests, zero warnings at `-warnaserror`, 0 open PRs, releases through v0.5.0.
 
 Never exercised: applying a *new* accent colour (write path is test-covered, but it repaints
 the desktop so it was left alone). Everything else has run at least once.
@@ -142,6 +151,13 @@ Deliberately rejected, do not implement: **UEFI boot logo replacement** (require
 Secure Boot) and **patching `imageres.dll`** (reverted by `sfc` and every cumulative update).
 Both are documented in the README's Scope section with reasoning.
 
-Optional next steps, none required: cursor packs, a live cursor preview in the details panel,
-further personalisation surfaces. The real bottleneck is not code — reputation with
-SmartScreen and SAC only builds through download volume.
+Optional next steps, none required: a live cursor preview in the details panel, further
+personalisation surfaces, and a generated starter cursor pack to sit alongside the sound one
+in `packs/` (that would be a drawing exercise like `tools/IconGenerator`, not a code one).
+The real bottleneck is not code — reputation with SmartScreen and SAC only builds through
+download volume.
+
+Known and deliberately not fixed: `SoundPackService` stores Windows sound paths exactly as
+read, which is fine today because sound assignments are already unexpanded in the registry,
+but it has the same latent portability hole cursors had. One call to
+`WindowsShippedFile.Collapse` would close it.

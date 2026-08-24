@@ -176,6 +176,11 @@
                         <Button Content="Save as…" Click="SaveCursorScheme_Click" Style="{StaticResource CompactButton}" />
                         <Button Content="Delete" Click="DeleteCursorScheme_Click" Style="{StaticResource CompactButton}" />
                         <Separator />
+                        <Button Content="Export…" Click="ExportCursorPack_Click" Style="{StaticResource CompactButton}"
+                                ToolTip="Save the current cursors, and the files behind them, as one shareable pack." />
+                        <Button Content="Import…" Click="ImportCursorPack_Click" Style="{StaticResource CompactButton}"
+                                ToolTip="Install a cursor pack and switch to it." />
+                        <Separator />
                         <Button Content="Undo" Click="UndoCursor_Click" x:Name="CursorUndoButton"
                                 IsEnabled="False" Style="{StaticResource CompactButton}" MinWidth="64" />
                     </WrapPanel>

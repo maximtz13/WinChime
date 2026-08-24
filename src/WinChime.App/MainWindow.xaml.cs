@@ -765,6 +765,12 @@ public partial class MainWindow : Window
     private const string CursorFilter =
         "Cursor files (*.cur;*.ani)|*.cur;*.ani|Static cursor (*.cur)|*.cur|Animated cursor (*.ani)|*.ani";
 
+    // No paths-only variant here, unlike sounds. A cursor scheme is a list of absolute paths
+    // into wherever the author downloaded a cursor set, with none of the %SystemRoot%
+    // fallbacks sounds have, so a scheme without its files is seventeen broken pointers.
+    private const string CursorPackFilter =
+        "WinChime cursor pack (*.winchimecursorpack)|*.winchimecursorpack|All files (*.*)|*.*";
+
     private void ReloadCursors()
     {
         var previous = (CursorList.SelectedItem as CursorEntry)?.RoleKey;
@@ -946,6 +952,80 @@ public partial class MainWindow : Window
         if (confirm != MessageBoxResult.Yes) return;
 
         Report(_cursors.DeleteScheme(scheme.Name));
+        ReloadCursorSchemes();
+    }
+
+    // ---------------------------------------------------------- cursor packs ==
+
+    private void ExportCursorPack_Click(object sender, RoutedEventArgs e)
+    {
+        var name = PromptDialog.Ask(this, "Name to record inside the pack:", "Export cursor pack", "My cursors");
+        if (name is null) return;
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export cursor pack",
+            Filter = CursorPackFilter,
+            FileName = name + CursorPackService.PackExtension,
+            DefaultExt = CursorPackService.PackExtension,
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        var scheme = new CursorSchemeExport { Name = name, Author = Environment.UserName };
+
+        foreach (var pair in _cursors.CaptureAssignments())
+            scheme.Assignments[pair.Key] = pair.Value;
+
+        var pack = CursorPackService.Create(dialog.FileName, scheme);
+
+        if (!pack.Success)
+        {
+            Report(OperationResult.Fail(pack.Message));
+            return;
+        }
+
+        SetStatus(pack.Message);
+        ShowWarnings("Pack created, with some cursors left out", pack.Warnings);
+    }
+
+    private void ImportCursorPack_Click(object sender, RoutedEventArgs e)
+    {
+        var path = PickFile("Import a cursor pack", CursorPackFilter);
+        if (path is null) return;
+
+        var (scheme, result) = CursorPackService.Install(path);
+
+        if (scheme is null || !result.Success)
+        {
+            Report(OperationResult.Fail(result.Message));
+            return;
+        }
+
+        SetStatus(result.Message);
+
+        // Taken before the first write. Cursors have no backup path at all, unlike sounds,
+        // so this snapshot is the entire safety net for what is the largest destructive
+        // cursor operation in the app.
+        RememberCursorsForUndo($"Install cursor pack {scheme.Name}");
+
+        // Registered as a named scheme and then applied by name, rather than writing the
+        // seventeen values directly. That is what sets the active scheme name and Scheme
+        // Source the way Windows expects, and it leaves the pack in the scheme list so it can
+        // be switched back to later.
+        var saved = _cursors.SaveScheme(scheme.Name, CursorPackService.ToSchemeValues(scheme));
+
+        if (!saved.Success)
+        {
+            Report(saved);
+            ShowWarnings("Some cursors were skipped", result.Warnings);
+            return;
+        }
+
+        Report(_cursors.ApplyScheme(scheme.Name));
+        ShowWarnings("Some cursors were skipped", result.Warnings);
+
+        ReloadCursors();
         ReloadCursorSchemes();
     }
 

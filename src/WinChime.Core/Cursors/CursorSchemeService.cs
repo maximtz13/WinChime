@@ -270,6 +270,30 @@ public sealed class CursorSchemeService
 
     public OperationResult SaveCurrentAsScheme(string name)
     {
+        var cursors = LoadCursors();
+
+        var values = CursorRoles.All
+            .Select(role => cursors.First(c => c.RoleKey == role.Key).CurrentPathRaw ?? string.Empty)
+            .ToList();
+
+        return SaveScheme(name, values);
+    }
+
+    /// <summary>
+    /// Writes a named scheme from values supplied by the caller, without reading or changing
+    /// the cursors currently in use.
+    ///
+    /// Exists for cursor packs, which need to register a scheme whose files were just
+    /// extracted rather than one that is already applied. Keeping it here rather than letting
+    /// the pack service write the registry directly keeps the three rules that make a scheme
+    /// string valid in one place, and one of them is easy to miss.
+    /// </summary>
+    /// <param name="values">
+    /// Ordered as <see cref="CursorRoles.All"/>. Short lists are padded and long ones
+    /// truncated, matching what <see cref="ReadScheme"/> returns.
+    /// </param>
+    public OperationResult SaveScheme(string name, IReadOnlyList<string> values)
+    {
         var trimmed = name.Trim();
         if (string.IsNullOrWhiteSpace(trimmed)) return OperationResult.Fail("Scheme name is empty.");
 
@@ -279,15 +303,35 @@ public sealed class CursorSchemeService
         if (ListSchemes().Any(s => s.IsSystemScheme && s.Name.Equals(trimmed, StringComparison.OrdinalIgnoreCase)))
             return OperationResult.Fail($"{trimmed} is a scheme that ships with Windows and cannot be overwritten.");
 
+        // A comma in a PATH is exactly as fatal as one in the name, and far easier to arrive
+        // at by accident: a comma is a legal Windows filename character, so a cursor called
+        // "arrow,2.cur" is perfectly ordinary until it is written here, at which point it
+        // splits into two entries and shifts every later role by one. Nothing caught this
+        // before because paths only ever came from a file picker on this machine; a pack
+        // brings filenames chosen on someone else's.
+        for (var i = 0; i < values.Count && i < CursorRoles.All.Count; i++)
+        {
+            if (values[i].Contains(','))
+            {
+                return OperationResult.Fail(
+                    $"{CursorRoles.All[i].DisplayName} points at a path containing a comma, which cannot be " +
+                    $"stored in a cursor scheme: {values[i]}");
+            }
+        }
+
         try
         {
-            var cursors = LoadCursors();
-            var value = string.Join(",", CursorRoles.All.Select(role =>
-                cursors.First(c => c.RoleKey == role.Key).CurrentPathRaw ?? string.Empty));
+            var ordered = new string[CursorRoles.All.Count];
+            for (var i = 0; i < ordered.Length; i++)
+                ordered[i] = i < values.Count ? values[i] : string.Empty;
+
+            var value = string.Join(",", ordered);
 
             using var key = Registry.CurrentUser.CreateSubKey(_userSchemes.Path, writable: true);
             if (key is null) return OperationResult.Fail("Could not open the cursor schemes key.");
 
+            // One %SystemRoot% entry anywhere in the string makes the whole value expandable,
+            // which is how Windows stores its own schemes.
             key.SetValue(trimmed, value,
                 value.Contains('%') ? RegistryValueKind.ExpandString : RegistryValueKind.String);
 
