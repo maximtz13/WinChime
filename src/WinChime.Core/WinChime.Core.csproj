@@ -26,7 +26,7 @@
 
       Pinned to 2.x: NAudio 3.x requires .NET 9 and this project targets .NET 8.
     -->
-    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="NAudio" Version="2.4.0" />
   </ItemGroup>
 
 </Project>
